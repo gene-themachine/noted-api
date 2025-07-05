@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon'
 import { BaseModel, column, hasMany, belongsTo } from '@adonisjs/lucid/orm'
-import LibraryItem from '#models/library_Item'
+import LibraryItem from '#models/library_item'
 import type { HasMany } from '@adonisjs/lucid/types/relations'
 import Workflow from '#models/workflow'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
