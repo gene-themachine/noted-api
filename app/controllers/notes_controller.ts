@@ -256,4 +256,29 @@ export default class NotesController {
       })
     }
   }
+
+  // Get a single note by its ID
+  async getNoteById({ request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const noteId = request.param('noteId')
+
+      const note = await Note.query().where('id', noteId).andWhere('user_id', user.id).first()
+
+      if (!note) {
+        return response.notFound({
+          message: 'Note not found or you do not have access to it',
+        })
+      }
+
+      return response.ok({
+        message: 'Note retrieved successfully',
+        note,
+      })
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to retrieve note',
+      })
+    }
+  }
 }

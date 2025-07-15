@@ -75,4 +75,27 @@ export default class ProjectController {
       })
     }
   }
+
+  async getProjectById({ response, params, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const project = await Project.query()
+        .where('id', params.id)
+        .andWhere('userId', user.id)
+        .preload('workflows')
+        .preload('libraryItems')
+        .firstOrFail()
+
+      return response.ok({
+        project,
+      })
+    } catch (error) {
+      if (error.code === 'E_ROW_NOT_FOUND') {
+        return response.notFound({ message: 'Project not found' })
+      }
+      return response.internalServerError({
+        message: 'Failed to retrieve project',
+      })
+    }
+  }
 }

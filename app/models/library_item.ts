@@ -26,6 +26,9 @@ export default class LibraryItem extends BaseModel {
   @column()
   declare isGlobal: boolean // New flag — true ⇒ file is global
 
+  @column()
+  declare processingStatus: string // eg. 'queued', 'processing', 'completed', 'failed'
+
   @column.dateTime()
   declare uploadedAt: DateTime // Defaults to now()
 
@@ -37,6 +40,12 @@ export default class LibraryItem extends BaseModel {
 
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
+
+  @column()
+  declare shortSummary: string | null
+
+  @column()
+  declare fullSummary: string | null
 
   @belongsTo(() => Project)
   declare project: BelongsTo<typeof Project>
