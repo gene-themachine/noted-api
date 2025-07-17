@@ -88,6 +88,7 @@ export default class NotesController {
       const note = await Note.create({
         userId: user.id,
         projectId: payload.projectId,
+        name: payload.name,
         content: payload.content || '',
       })
 
@@ -121,6 +122,7 @@ export default class NotesController {
           id: note.id,
           userId: note.userId,
           projectId: note.projectId,
+          name: note.name,
           content: note.content,
           createdAt: note.createdAt,
           updatedAt: note.updatedAt,
@@ -278,6 +280,118 @@ export default class NotesController {
     } catch (error) {
       return response.internalServerError({
         message: 'Failed to retrieve note',
+      })
+    }
+  }
+
+  // Update note validator
+  static updateValidator = vine.compile(
+    vine.object({
+      name: vine.string().trim().minLength(1).maxLength(255).optional(),
+      content: vine.string().trim().optional(),
+    })
+  )
+
+  // Update a note by its ID
+  async updateNote({ request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const noteId = request.param('noteId')
+      const payload = await request.validateUsing(NotesController.updateValidator)
+
+      const note = await Note.query().where('id', noteId).andWhere('user_id', user.id).first()
+
+      if (!note) {
+        return response.notFound({
+          message: 'Note not found or you do not have access to it',
+        })
+      }
+
+      // Update the note
+      await note.merge(payload).save()
+
+      return response.ok({
+        message: 'Note updated successfully',
+        note,
+      })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to update note',
+      })
+    }
+  }
+
+  // Helper function to remove note from folder tree
+  private removeNoteFromTree(tree: TreeNode, noteId: string): boolean {
+    if (!tree.children) return false
+
+    // Check direct children
+    const index = tree.children.findIndex(
+      (child) => child.type === 'note' && child.noteId === noteId
+    )
+
+    if (index !== -1) {
+      tree.children.splice(index, 1)
+      return true
+    }
+
+    // Recursively check folders
+    for (const child of tree.children) {
+      if (child.type === 'folder' && this.removeNoteFromTree(child, noteId)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  // Delete a note by its ID
+  async deleteNote({ request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const noteId = request.param('noteId')
+
+      const note = await Note.query().where('id', noteId).andWhere('user_id', user.id).first()
+
+      if (!note) {
+        return response.notFound({
+          message: 'Note not found or you do not have access to it',
+        })
+      }
+
+      // Get the project to update folder tree
+      const project = await Project.query()
+        .where('id', note.projectId!)
+        .where('userId', user.id)
+        .whereNull('deletedAt')
+        .first()
+
+      if (project) {
+        let folderTree = (project.folderTree as unknown as TreeNode) || this.initializeFolderTree()
+
+        // Remove the note from the folder tree
+        this.removeNoteFromTree(folderTree, noteId)
+
+        // Update the project with the new folder tree
+        await project.merge({ folderTree: folderTree as unknown as JSON }).save()
+      }
+
+      // Delete the note from database
+      await note.delete()
+
+      return response.ok({
+        message: 'Note deleted successfully',
+      })
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to delete note',
       })
     }
   }

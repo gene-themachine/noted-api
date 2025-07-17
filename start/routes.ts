@@ -33,6 +33,8 @@ router
 
     // Notes routes
     router.get('/notes/:noteId', [NotesController, 'getNoteById'])
+    router.put('/notes/:noteId', [NotesController, 'updateNote'])
+    router.delete('/notes/:noteId', [NotesController, 'deleteNote'])
     router.post('/notes', [NotesController, 'createNote'])
     router.post('/folders', [NotesController, 'createFolder'])
     router.get('/projects/:projectId/tree', [NotesController, 'getProjectTree'])

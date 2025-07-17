@@ -12,6 +12,9 @@ export default class Note extends BaseModel {
   declare projectId: string | null // UUID, FK → projects.id
 
   @column()
+  declare name: string
+
+  @column()
   declare content: string
 
   @column.dateTime({ autoCreate: true })
