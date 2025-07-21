@@ -1,7 +1,9 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo } from '@adonisjs/lucid/orm'
+import { BaseModel, column, belongsTo, manyToMany } from '@adonisjs/lucid/orm'
 import Project from '#models/project'
-import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import Note from '#models/note'
+import type { BelongsTo, ManyToMany } from '@adonisjs/lucid/types/relations'
+import Flashcard from './flashcard.js'
 
 // This will be the model for files stored in the library system
 export default class LibraryItem extends BaseModel {
@@ -10,6 +12,9 @@ export default class LibraryItem extends BaseModel {
 
   @column()
   declare projectId: string // UUID, FK → projects.id
+
+  @column()
+  declare noteId: string | null // UUID, FK → notes.id
 
   @column()
   declare name: string // Display name
@@ -26,9 +31,6 @@ export default class LibraryItem extends BaseModel {
   @column()
   declare isGlobal: boolean // New flag — true ⇒ file is global
 
-  @column()
-  declare processingStatus: string // eg. 'queued', 'processing', 'completed', 'failed'
-
   @column.dateTime()
   declare uploadedAt: DateTime // Defaults to now()
 
@@ -41,12 +43,14 @@ export default class LibraryItem extends BaseModel {
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 
-  @column()
-  declare shortSummary: string | null
-
-  @column()
-  declare fullSummary: string | null
-
   @belongsTo(() => Project)
   declare project: BelongsTo<typeof Project>
+
+  @belongsTo(() => Note)
+  declare note: BelongsTo<typeof Note>
+
+  @manyToMany(() => Flashcard, {
+    pivotTable: 'flashcard_library_items',
+  })
+  declare flashcards: ManyToMany<typeof Flashcard>
 }

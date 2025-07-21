@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import dotenv from 'dotenv'
 
@@ -34,6 +34,26 @@ export async function getPresignedUrl(fileName: string, fileType: string) {
   return {
     presignedUrl,
     key,
+    expiresIn,
+  }
+}
+
+export async function getPresignedViewUrl(key: string) {
+  if (!BUCKET_NAME) {
+    throw new Error('S3_BUCKET_NAME is not set in environment')
+  }
+
+  const command = new GetObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+  })
+
+  // 10 minutes expiration (600 seconds)
+  const expiresIn = 600
+  const presignedUrl = await getSignedUrl(s3, command, { expiresIn })
+
+  return {
+    presignedUrl,
     expiresIn,
   }
 }

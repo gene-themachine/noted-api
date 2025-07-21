@@ -2,20 +2,9 @@ import type { HttpContext } from '@adonisjs/core/http'
 import LibraryItem from '#models/library_item'
 import Project from '#models/project'
 import vine from '@vinejs/vine'
-import { errors as vineErrors } from '@vinejs/vine'
 import { randomUUID } from 'node:crypto'
-import { getPresignedUrl } from '../utils/s3.js'
-import { Queue } from 'bullmq'
+import { getPresignedUrl, getPresignedViewUrl } from '../utils/s3.js'
 import { DateTime } from 'luxon'
-
-// Define the queue outside of the controller so it's a singleton.
-export const documentProcessingQueue = new Queue('document-processing', {
-  connection: {
-    host: process.env.REDIS_HOST || '127.0.0.1',
-    port: Number(process.env.REDIS_PORT) || 6379,
-    password: process.env.REDIS_PASSWORD || undefined,
-  },
-})
 
 export default class LibrariesController {
   static presignedUrlValidator = vine.compile(
@@ -32,11 +21,12 @@ export default class LibrariesController {
       fileName: vine.string(),
       fileType: vine.string(),
       size: vine.number().positive(),
+      isGlobal: vine.boolean().optional(),
     })
   )
 
   async getPresignedUrl({ request, response, auth }: HttpContext) {
-    const user = await auth.authenticate()
+    await auth.authenticate()
     const payload = await request.validateUsing(LibrariesController.presignedUrlValidator)
 
     const presignedUrl = await getPresignedUrl(payload.fileName, payload.fileType)
@@ -65,17 +55,8 @@ export default class LibrariesController {
       mimeType: payload.fileType,
       storagePath: payload.key,
       size: payload.size,
-      isGlobal: false,
-      processingStatus: 'queued',
+      isGlobal: payload.isGlobal || false,
       uploadedAt: DateTime.now(),
-    })
-
-    // Enqueue job for processing
-    await documentProcessingQueue.add('process-document', {
-      id: randomId,
-      libraryItemId: libraryItem.id,
-      fileUrl: payload.key, // Or a full URL if you construct it
-      userId: user.id,
     })
 
     return response.created(libraryItem)
@@ -98,5 +79,43 @@ export default class LibrariesController {
       .orderBy('created_at', 'desc')
 
     return response.json(libraryItems)
+  }
+
+  async getProjectLibraryItems({ request, response, auth }: HttpContext) {
+    const user = await auth.authenticate()
+    const projectId = request.param('projectId')
+
+    await Project.query().where('id', projectId).where('user_id', user.id).firstOrFail()
+
+    const libraryItems = await LibraryItem.query()
+      .where('project_id', projectId)
+      .orderBy('created_at', 'desc')
+
+    return response.json(libraryItems)
+  }
+
+  async getLibraryItemViewUrl({ request, response, auth }: HttpContext) {
+    const user = await auth.authenticate()
+    const libraryItemId = request.param('id')
+
+    const libraryItem = await LibraryItem.findOrFail(libraryItemId)
+    await Project.query().where('id', libraryItem.projectId).where('user_id', user.id).firstOrFail()
+
+    const { presignedUrl } = await getPresignedViewUrl(libraryItem.storagePath)
+
+    return response.json({ url: presignedUrl })
+  }
+
+  async toggleGlobalStatus({ request, response, auth }: HttpContext) {
+    const user = await auth.authenticate()
+    const libraryItemId = request.param('id')
+
+    const libraryItem = await LibraryItem.findOrFail(libraryItemId)
+    await Project.query().where('id', libraryItem.projectId).where('user_id', user.id).firstOrFail()
+
+    libraryItem.isGlobal = !libraryItem.isGlobal
+    await libraryItem.save()
+
+    return response.ok(libraryItem)
   }
 }

@@ -4,6 +4,8 @@ import Project from '#models/project'
 import vine from '@vinejs/vine'
 import { errors as vineErrors } from '@vinejs/vine'
 import { randomUUID } from 'node:crypto'
+import LibraryItem from '#models/library_item'
+import StudyOptions from '#models/study_options'
 
 interface TreeNode {
   id: string
@@ -14,6 +16,16 @@ interface TreeNode {
 }
 
 export default class NotesController {
+  static availableStudyOptions = {
+    flashcard: 'Flashcard',
+    blurtItOut: 'Blurt It Out',
+    multipleChoice: 'Multiple Choice',
+    fillInTheBlank: 'Fill In The Blank',
+    matching: 'Matching',
+    shortAnswer: 'Short Answer',
+    essay: 'Essay',
+  }
+
   static createValidator = vine.compile(
     vine.object({
       projectId: vine.string().trim().minLength(1),
@@ -29,6 +41,13 @@ export default class NotesController {
       projectId: vine.string().trim().minLength(1),
       name: vine.string().trim().minLength(1).maxLength(255),
       folderPath: vine.array(vine.string()).optional(), // Array of folder IDs representing the path
+    })
+  )
+
+  static deleteFolderValidator = vine.compile(
+    vine.object({
+      projectId: vine.string().trim().minLength(1),
+      folderPath: vine.array(vine.string()), // Array of folder IDs representing the path to the folder
     })
   )
 
@@ -90,6 +109,18 @@ export default class NotesController {
         projectId: payload.projectId,
         name: payload.name,
         content: payload.content || '',
+      })
+
+      // Create a default study options entry for the new note
+      await StudyOptions.create({
+        noteId: note.id,
+        flashcard: false,
+        blurtItOut: false,
+        multipleChoice: false,
+        fillInTheBlank: false,
+        matching: false,
+        shortAnswer: false,
+        essay: false,
       })
 
       // Update the folder tree
@@ -265,7 +296,11 @@ export default class NotesController {
       const user = await auth.authenticate()
       const noteId = request.param('noteId')
 
-      const note = await Note.query().where('id', noteId).andWhere('user_id', user.id).first()
+      const note = await Note.query()
+        .where('id', noteId)
+        .andWhere('user_id', user.id)
+        .preload('libraryItems')
+        .first()
 
       if (!note) {
         return response.notFound({
@@ -284,6 +319,83 @@ export default class NotesController {
     }
   }
 
+  // Get study options for a note
+  async getStudyOptions({ request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const noteId = request.param('noteId')
+
+      // Check if the note exists and belongs to the user
+      const note = await Note.query().where('id', noteId).where('user_id', user.id).first()
+      if (!note) {
+        return response.notFound({ message: 'Note not found.' })
+      }
+
+      // Fetch study options
+      const studyOptions = await StudyOptions.query().where('note_id', noteId).first()
+
+      if (!studyOptions) {
+        // This case should ideally not happen if options are created with each note
+        return response.notFound({ message: 'Study options not found for this note.' })
+      }
+
+      return response.ok(studyOptions)
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to retrieve study options.',
+        error: error.message,
+      })
+    }
+  }
+
+  async getAvailableStudyOptions({ response }: HttpContext) {
+    return response.ok(NotesController.availableStudyOptions)
+  }
+
+  static updateStudyOptionsValidator = vine.compile(
+    vine.object({
+      flashcard: vine.boolean().optional(),
+      blurtItOut: vine.boolean().optional(),
+      multipleChoice: vine.boolean().optional(),
+      fillInTheBlank: vine.boolean().optional(),
+      matching: vine.boolean().optional(),
+      shortAnswer: vine.boolean().optional(),
+      essay: vine.boolean().optional(),
+    })
+  )
+
+  // Update study options for a note
+  async updateStudyOptions({ request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const noteId = request.param('noteId')
+      const payload = await request.validateUsing(NotesController.updateStudyOptionsValidator)
+
+      // Check if the note exists and belongs to the user
+      const note = await Note.query().where('id', noteId).where('user_id', user.id).first()
+      if (!note) {
+        return response.notFound({ message: 'Note not found.' })
+      }
+
+      const studyOptions = await StudyOptions.query().where('note_id', noteId).firstOrFail()
+      studyOptions.merge(payload)
+      await studyOptions.save()
+
+      return response.ok(studyOptions)
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+      return response.internalServerError({
+        message: 'Failed to update study options.',
+        error: error.message,
+      })
+    }
+  }
+
   // Update note validator
   static updateValidator = vine.compile(
     vine.object({
@@ -291,6 +403,28 @@ export default class NotesController {
       content: vine.string().trim().optional(),
     })
   )
+
+  // Helper function to update note name in folder tree
+  private updateNoteInTree(tree: TreeNode, noteId: string, newName: string): boolean {
+    if (!tree.children) return false
+
+    // Check direct children
+    for (const child of tree.children) {
+      if (child.type === 'note' && child.noteId === noteId) {
+        child.name = newName
+        return true
+      }
+    }
+
+    // Recursively check folders
+    for (const child of tree.children) {
+      if (child.type === 'folder' && this.updateNoteInTree(child, noteId, newName)) {
+        return true
+      }
+    }
+
+    return false
+  }
 
   // Update a note by its ID
   async updateNote({ request, response, auth }: HttpContext) {
@@ -309,6 +443,26 @@ export default class NotesController {
 
       // Update the note
       await note.merge(payload).save()
+
+      // If the name changed, update the folder tree as well
+      if (payload.name && note.projectId) {
+        const project = await Project.query()
+          .where('id', note.projectId)
+          .where('userId', user.id)
+          .whereNull('deletedAt')
+          .first()
+
+        if (project) {
+          let folderTree =
+            (project.folderTree as unknown as TreeNode) || this.initializeFolderTree()
+
+          // Update the note name in the folder tree
+          this.updateNoteInTree(folderTree, noteId, payload.name)
+
+          // Save the updated folder tree
+          await project.merge({ folderTree: folderTree as unknown as JSON }).save()
+        }
+      }
 
       return response.ok({
         message: 'Note updated successfully',
@@ -345,6 +499,27 @@ export default class NotesController {
     // Recursively check folders
     for (const child of tree.children) {
       if (child.type === 'folder' && this.removeNoteFromTree(child, noteId)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  // Helper function to remove a node (folder or note) from the tree by ID
+  private removeNodeById(tree: TreeNode, nodeId: string): boolean {
+    if (!tree.children) return false
+
+    // Check direct children
+    const index = tree.children.findIndex((child) => child.id === nodeId)
+    if (index !== -1) {
+      tree.children.splice(index, 1)
+      return true
+    }
+
+    // Recursively check folders
+    for (const child of tree.children) {
+      if (child.type === 'folder' && this.removeNodeById(child, nodeId)) {
         return true
       }
     }
@@ -394,5 +569,72 @@ export default class NotesController {
         message: 'Failed to delete note',
       })
     }
+  }
+
+  async deleteFolder({ request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { projectId, folderId } = request.params()
+
+      const project = await Project.query()
+        .where('id', projectId)
+        .where('user_id', user.id)
+        .firstOrFail()
+
+      let folderTree = (project.folderTree as unknown as TreeNode) || this.initializeFolderTree()
+
+      const removed = this.removeNodeById(folderTree, folderId)
+
+      if (!removed) {
+        return response.notFound({ message: 'Folder not found in the project tree.' })
+      }
+
+      await project.merge({ folderTree: folderTree as unknown as JSON }).save()
+
+      return response.ok({ message: 'Folder deleted successfully.' })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+      return response.internalServerError({ message: 'Failed to delete folder.' })
+    }
+  }
+
+  async addLibraryItemToNote({ request, response, auth }: HttpContext) {
+    const user = await auth.authenticate()
+    const { noteId, libraryItemId } = request.params()
+
+    const note = await Note.query().where('id', noteId).where('user_id', user.id).firstOrFail()
+    const libraryItem = await LibraryItem.findOrFail(libraryItemId)
+
+    // Ensure the library item belongs to the same project
+    if (note.projectId !== libraryItem.projectId) {
+      return response.badRequest({
+        message: 'Note and Library Item do not belong to the same project.',
+      })
+    }
+
+    await libraryItem.merge({ noteId: note.id }).save()
+
+    return response.ok({ message: 'Library item added to note successfully.' })
+  }
+
+  async removeLibraryItemFromNote({ request, response, auth }: HttpContext) {
+    const user = await auth.authenticate()
+    const { noteId, libraryItemId } = request.params()
+
+    const note = await Note.query().where('id', noteId).where('user_id', user.id).firstOrFail()
+    const libraryItem = await LibraryItem.findOrFail(libraryItemId)
+
+    // Ensure the library item is actually associated with the note
+    if (libraryItem.noteId !== note.id) {
+      return response.badRequest({ message: 'Library item is not associated with this note.' })
+    }
+
+    await libraryItem.merge({ noteId: null }).save()
+    return response.ok({ message: 'Library item removed from note successfully.' })
   }
 }
