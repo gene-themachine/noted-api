@@ -57,6 +57,10 @@ router
     // Flashcard routes
     router.post('/flashcards/create', [FlashcardController, 'createFlashcards'])
     router.get('/notes/:noteId/flashcards', [FlashcardController, 'getFlashcardsByNote'])
+    router.get('/notes/:noteId/flashcards/status', [
+      FlashcardController,
+      'getFlashcardGenerationStatus',
+    ])
     router.put('/notes/:noteId/flashcards/mark-needs-update', [
       FlashcardController,
       'markFlashcardsAsNeedingUpdate',
@@ -81,6 +85,19 @@ router
     router.put('/libraries/:id/toggle-global', [LibrariesController, 'toggleGlobalStatus'])
   })
   .use(middleware.auth())
+
+// Custom route for SSE with token authentication
+router
+  .get('/notes/:noteId/flashcards/events', [FlashcardController, 'streamFlashcardStatus'])
+  .use(async (ctx, next) => {
+    // Manually handle authentication from query param for EventSource
+    const token = ctx.request.qs().token
+    if (token) {
+      ctx.request.request.headers.authorization = `Bearer ${token}`
+    }
+    await ctx.auth.authenticate()
+    return next()
+  })
 
 // Basic route
 router.get('/', async () => {

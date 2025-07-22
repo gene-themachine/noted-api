@@ -114,13 +114,13 @@ export default class NotesController {
       // Create a default study options entry for the new note
       await StudyOptions.create({
         noteId: note.id,
-        flashcard: false,
-        blurtItOut: false,
-        multipleChoice: false,
-        fillInTheBlank: false,
-        matching: false,
-        shortAnswer: false,
-        essay: false,
+        flashcard: null,
+        blurtItOut: null,
+        multipleChoice: null,
+        fillInTheBlank: null,
+        matching: null,
+        shortAnswer: null,
+        essay: null,
       })
 
       // Update the folder tree
@@ -354,13 +354,13 @@ export default class NotesController {
 
   static updateStudyOptionsValidator = vine.compile(
     vine.object({
-      flashcard: vine.boolean().optional(),
-      blurtItOut: vine.boolean().optional(),
-      multipleChoice: vine.boolean().optional(),
-      fillInTheBlank: vine.boolean().optional(),
-      matching: vine.boolean().optional(),
-      shortAnswer: vine.boolean().optional(),
-      essay: vine.boolean().optional(),
+      flashcard: vine.enum(['queued', 'completed', 'failed']).optional(),
+      blurtItOut: vine.enum(['queued', 'completed', 'failed']).optional(),
+      multipleChoice: vine.enum(['queued', 'completed', 'failed']).optional(),
+      fillInTheBlank: vine.enum(['queued', 'completed', 'failed']).optional(),
+      matching: vine.enum(['queued', 'completed', 'failed']).optional(),
+      shortAnswer: vine.enum(['queued', 'completed', 'failed']).optional(),
+      essay: vine.enum(['queued', 'completed', 'failed']).optional(),
     })
   )
 
