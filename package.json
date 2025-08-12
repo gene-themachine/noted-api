@@ -5,7 +5,7 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
-    "start": "node bin/server.js",
+    "start": "node build/bin/server.js",
     "build": "node ace build",
     "predev": "npm run build",
     "dev": "node ace serve --hmr",
