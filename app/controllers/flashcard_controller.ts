@@ -1,135 +1,138 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import vine from '@vinejs/vine'
 import { errors as vineErrors } from '@vinejs/vine'
-import Flashcard from '#models/flashcard'
+import FlashcardSet from '#models/flashcard_set'
 import Note from '#models/note'
-import StudyOptions from '#models/study_options'
-import { Queue } from 'bullmq'
-import queueConfig from '#config/queue'
-
-// Define the shape of the job data
-interface QueueJob {
-  noteId: string
-  userId: string
-  projectId: string
-  includeNoteContent: boolean
-  selectedLibraryItemIds: string[]
-}
-
-// The queue name MUST match the name the microservice worker is listening to
-const flashcardQueue = new Queue('flashcard generation', {
-  connection: queueConfig.connections.redis,
-})
+import LibraryItem from '#models/library_item'
+import Project from '#models/project'
+import Flashcard from '#models/flashcard'
+import { FlashcardService } from '#services/flashcard_service'
+import AIService from '#services/ai_service'
 
 export default class FlashcardController {
-  static createFlashcardsValidator = vine.compile(
+  private flashcardService = new FlashcardService()
+  private aiService = new AIService()
+
+  static createFlashcardSetValidator = vine.compile(
     vine.object({
-      noteId: vine.string().trim().minLength(1),
+      name: vine.string().trim().minLength(1),
+      selectedNotes: vine.array(vine.string()).optional(),
       selectedLibraryItems: vine.array(vine.string()).optional(),
-      includeNoteContent: vine.boolean(),
     })
   )
 
-  async createFlashcards({ request, response, auth }: HttpContext) {
+  // Project-level flashcard set methods
+  async getProjectFlashcardSets({ params, response, auth }: HttpContext) {
     try {
       const user = await auth.authenticate()
-      const payload = await request.validateUsing(FlashcardController.createFlashcardsValidator)
+      const { projectId } = params
 
-      // Verify that the note exists and belongs to the user
-      const note = await Note.query().where('id', payload.noteId).where('user_id', user.id).first()
+      const flashcardSets = await this.flashcardService.getProjectFlashcardSets(user.id, projectId)
 
-      if (!note) {
-        return response.notFound({
-          message: 'Note not found or you do not have access to it',
-        })
-      }
+      return response.ok({
+        message: 'Flashcard sets retrieved successfully',
+        data: flashcardSets,
+      })
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to retrieve flashcard sets',
+        error: error.message,
+      })
+    }
+  }
 
-      // Check if flashcards already exist for this note
-      const existingFlashcards = await Flashcard.query().where('note_id', payload.noteId)
-      if (existingFlashcards.length > 0) {
+  async createProjectFlashcardSet({ params, request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { projectId } = params
+      const payload = await request.validateUsing(FlashcardController.createFlashcardSetValidator)
+
+      const selectedNotes = payload.selectedNotes || []
+      const selectedLibraryItems = payload.selectedLibraryItems || []
+
+      // Ensure at least one content source is selected
+      if (selectedNotes.length === 0 && selectedLibraryItems.length === 0) {
         return response.badRequest({
-          message: 'Flashcards already exist for this note. Delete existing flashcards first.',
+          message: 'At least one note or library item must be selected',
         })
       }
 
-      // Validate that we have some content to work with
-      const hasNoteContent = payload.includeNoteContent && note.content.trim().length > 0
-      const hasLibraryItems =
-        payload.selectedLibraryItems && payload.selectedLibraryItems.length > 0
+      // Verify all selected notes belong to the user and project (if any)
+      if (selectedNotes.length > 0) {
+        const notes = await Note.query()
+          .whereIn('id', selectedNotes)
+          .where('user_id', user.id)
+          .where('project_id', projectId)
 
-      if (!hasNoteContent && !hasLibraryItems) {
-        return response.badRequest({
-          message: 'Please select note content or library items to generate flashcards from.',
-        })
+        if (notes.length !== selectedNotes.length) {
+          return response.badRequest({
+            message: 'Some selected notes are invalid or do not belong to this project',
+          })
+        }
       }
 
-      // Update study options to indicate flashcard generation is queued
-      const studyOptions = await StudyOptions.query().where('note_id', payload.noteId).first()
-      if (studyOptions) {
-        await studyOptions.merge({ flashcard: 'queued' }).save()
+      // Verify library items if provided
+      if (selectedLibraryItems.length > 0) {
+        const libraryItems = await LibraryItem.query()
+          .whereIn('id', selectedLibraryItems)
+          .where((query) => {
+            query.where('is_global', true).orWhere('project_id', projectId)
+          })
+
+        if (libraryItems.length !== selectedLibraryItems.length) {
+          return response.badRequest({
+            message: 'Some selected library items are invalid or not accessible',
+          })
+        }
       }
 
-      // Prepare job data for the microservice
-      // The microservice will:
-      // 1. Fetch note data from Supabase using noteId (if includeNoteContent=true)
-      // 2. Fetch library items from Supabase using selectedLibraryItemIds
-      // 3. Download and analyze files using their storage paths
-      // 4. Generate flashcards from the combined content
-      // 5. Save flashcards to database and update study options status
-      const jobData: QueueJob = {
-        noteId: payload.noteId,
+      // Create the flashcard set
+      const flashcardSet = await FlashcardSet.create({
+        name: payload.name,
         userId: user.id,
-        projectId: note.projectId!,
-        includeNoteContent: payload.includeNoteContent,
-        selectedLibraryItemIds: payload.selectedLibraryItems || [],
-      }
-
-      console.log('Queueing flashcard generation job:', {
-        noteId: jobData.noteId,
-        userId: jobData.userId,
-        projectId: jobData.projectId,
-        includeNoteContent: jobData.includeNoteContent,
-        libraryItemsCount: jobData.selectedLibraryItemIds.length,
+        projectId: projectId,
       })
 
-      // Queue the flashcard generation job
+      // Attach notes and library items
+      if (selectedNotes.length > 0) {
+        await flashcardSet.related('notes').attach(selectedNotes)
+      }
+      if (selectedLibraryItems.length > 0) {
+        await flashcardSet.related('libraryItems').attach(selectedLibraryItems)
+      }
+
+      // Generate flashcards directly
+      console.log('Starting flashcard generation:', {
+        flashcardSetId: flashcardSet.id,
+        userId: user.id,
+        projectId: projectId,
+        notesCount: selectedNotes.length,
+        libraryItemsCount: selectedLibraryItems.length,
+      })
+
       try {
-        console.log('📤 Adding job to queue:', flashcardQueue.name)
-        console.log('📤 Queue config:', queueConfig.connections.redis)
-
-        const job = await flashcardQueue.add('generate-flashcards', jobData, {
-          attempts: 3, // Retry up to 3 times on failure
-          backoff: {
-            type: 'exponential',
-            delay: 1000,
-          },
-          removeOnComplete: 100, // Keep last 100 completed jobs
-          removeOnFail: 500, // Keep last 500 failed jobs
+        const result = await this.aiService.generateFlashcardSet({
+          flashcardSetId: flashcardSet.id,
+          userId: user.id,
+          projectId: projectId,
+          selectedNoteIds: selectedNotes,
+          selectedLibraryItemIds: selectedLibraryItems,
         })
 
-        console.log('✅ Job added successfully:', {
-          jobId: job.id,
-          jobName: job.name,
-          queueName: flashcardQueue.name,
+        console.log('✅ Flashcard generation completed successfully')
+
+        return response.created({
+          ...flashcardSet.serialize(),
+          type: 'flashcard',
+          message: `Flashcard set created successfully with ${result.flashcardsCount} flashcards`,
+          status: 'completed',
+          flashcardsCount: result.flashcardsCount,
         })
-
-        return response.accepted({
-          message: 'Flashcard generation has been queued',
-          jobId: job.id,
-          noteId: payload.noteId,
-          status: 'queued',
-          estimatedTime: '30-60 seconds', // Estimated processing time
-        })
-      } catch (queueError) {
-        console.error('❌ Failed to add job to queue:', queueError)
-        console.error('❌ Queue config being used:', queueConfig.connections.redis)
-
-        // Reset study options on queue failure
-        if (studyOptions) {
-          await studyOptions.merge({ flashcard: 'failed' }).save()
-        }
-
-        throw new Error(`Failed to queue job: ${queueError.message}`)
+      } catch (generationError) {
+        console.error('❌ Failed to generate flashcards:', generationError)
+        // Delete the created set if generation failed
+        await flashcardSet.delete()
+        throw new Error(`Failed to generate flashcards: ${generationError.message}`)
       }
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
@@ -139,222 +142,76 @@ export default class FlashcardController {
         })
       }
 
-      // If there's an error, reset the study options status
-      try {
-        const studyOptions = await StudyOptions.query()
-          .where('note_id', request.body().noteId)
-          .first()
-        if (studyOptions) {
-          await studyOptions.merge({ flashcard: 'failed' }).save()
-        }
-      } catch (resetError) {
-        console.error('Failed to reset study options on error:', resetError)
-      }
-
       return response.internalServerError({
-        message: 'Failed to queue flashcard generation',
+        message: 'Failed to create flashcard set',
         error: error.message,
       })
     }
   }
 
-  async getFlashcardsByNote({ request, response, auth }: HttpContext) {
+  async getFlashcardSet({ params, response, auth }: HttpContext) {
     try {
       const user = await auth.authenticate()
-      const noteId = request.param('noteId')
+      const { setId } = params
 
-      // Verify that the note exists and belongs to the user
-      const note = await Note.query().where('id', noteId).where('user_id', user.id).first()
-
-      if (!note) {
-        return response.notFound({
-          message: 'Note not found or you do not have access to it',
-        })
-      }
-
-      const flashcards = await Flashcard.query()
-        .where('note_id', noteId)
-        .preload('libraryItems')
-        .orderBy('created_at', 'desc')
-
-      // Also get the current study options status
-      const studyOptions = await StudyOptions.query().where('note_id', noteId).first()
+      const flashcardSet = await this.flashcardService.getFlashcardSet(user.id, setId)
 
       return response.ok({
-        message: 'Flashcards retrieved successfully',
-        flashcards,
-        count: flashcards.length,
-        status: studyOptions?.flashcard || null,
+        message: 'Flashcard set retrieved successfully',
+        data: flashcardSet,
       })
     } catch (error) {
+      if (error.message === 'Flashcard set not found or access denied') {
+        return response.notFound({
+          message: 'Flashcard set not found or you do not have access to it',
+        })
+      }
       return response.internalServerError({
-        message: 'Failed to retrieve flashcards',
+        message: 'Failed to retrieve flashcard set',
         error: error.message,
       })
     }
   }
 
-  async getFlashcardGenerationStatus({ request, response, auth }: HttpContext) {
+  async deleteFlashcardSet({ params, response, auth }: HttpContext) {
     try {
       const user = await auth.authenticate()
-      const noteId = request.param('noteId')
+      const { setId } = params
 
-      // Verify that the note exists and belongs to the user
-      const note = await Note.query().where('id', noteId).where('user_id', user.id).first()
-
-      if (!note) {
-        return response.notFound({
-          message: 'Note not found or you do not have access to it',
-        })
-      }
-
-      // Get the current study options status
-      const studyOptions = await StudyOptions.query().where('note_id', noteId).first()
-      const flashcardStatus = studyOptions?.flashcard || null
-
-      // Check if flashcards exist
-      const flashcards = await Flashcard.query().where('note_id', noteId)
-      const hasFlashcards = flashcards.length > 0
+      await this.flashcardService.deleteFlashcardSet(user.id, setId)
 
       return response.ok({
-        noteId,
-        status: flashcardStatus,
-        hasFlashcards,
-        flashcardCount: flashcards.length,
-        message: this.getStatusMessage(flashcardStatus, hasFlashcards),
+        message: 'Flashcard set deleted successfully',
       })
     } catch (error) {
+      if (error.message === 'Flashcard set not found or access denied') {
+        return response.notFound({
+          message: 'Flashcard set not found or you do not have access to it',
+        })
+      }
       return response.internalServerError({
-        message: 'Failed to retrieve flashcard generation status',
+        message: 'Failed to delete flashcard set',
         error: error.message,
       })
     }
   }
 
-  async streamFlashcardStatus({ request, response, auth }: HttpContext) {
-    try {
-      const user = auth.getUserOrFail() // auth.authenticate() has already been called by the middleware
-      const noteId = request.param('noteId')
-
-      // Verify that the note exists and belongs to the user
-      const note = await Note.query().where('id', noteId).where('user_id', user.id).first()
-
-      if (!note) {
-        response.response.writeHead(404, { 'Content-Type': 'application/json' })
-        response.response.write(
-          `data: ${JSON.stringify({ error: 'Note not found or you do not have access to it' })}\n\n`
-        )
-        response.response.end()
-        return
-      }
-
-      // Set up SSE headers
-      response.response.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Cache-Control, Content-Type',
-      })
-
-      // Send initial status
-      const sendStatus = async () => {
-        try {
-          const studyOptions = await StudyOptions.query().where('note_id', noteId).first()
-          const flashcardStatus = studyOptions?.flashcard || null
-
-          const flashcards = await Flashcard.query().where('note_id', noteId)
-          const hasFlashcards = flashcards.length > 0
-
-          const statusData = {
-            noteId,
-            status: flashcardStatus,
-            hasFlashcards,
-            flashcardCount: flashcards.length,
-            message: this.getStatusMessage(flashcardStatus, hasFlashcards),
-            timestamp: new Date().toISOString(),
-          }
-
-          response.response.write(`data: ${JSON.stringify(statusData)}\n\n`)
-          return flashcardStatus
-        } catch (error) {
-          console.error('Error sending status:', error)
-          return null
-        }
-      }
-
-      // Send initial status
-      await sendStatus()
-
-      // Keep streaming updates until status is final (completed or failed)
-      const pollInterval = setInterval(async () => {
-        const newStatus = await sendStatus()
-
-        // Close the stream if status is final or error occurred
-        if (newStatus === null || newStatus === 'completed' || newStatus === 'failed') {
-          clearInterval(pollInterval)
-          response.response.end()
-        }
-      }, 2000) // Poll every 2 seconds
-
-      // Clean up on client disconnect
-      request.request.on('close', () => {
-        clearInterval(pollInterval)
-        response.response.end()
-      })
-
-      request.request.on('error', () => {
-        clearInterval(pollInterval)
-        response.response.end()
-      })
-    } catch (error) {
-      response.response.writeHead(500, { 'Content-Type': 'application/json' })
-      response.response.write(
-        `data: ${JSON.stringify({ error: 'Failed to stream status', message: error.message })}\n\n`
-      )
-      response.response.end()
-    }
-  }
-
-  private getStatusMessage(status: string | null, hasFlashcards: boolean): string {
-    if (status === 'queued') {
-      return 'Flashcard generation is in progress...'
-    } else if (status === 'completed' && hasFlashcards) {
-      return 'Flashcards are ready for study'
-    } else if (status === 'failed') {
-      return 'Flashcard generation failed. You can try again.'
-    } else if (hasFlashcards) {
-      return 'Flashcards are available'
-    } else {
-      return 'No flashcards have been generated yet'
-    }
-  }
-
-  async markFlashcardsAsNeedingUpdate({ request, response, auth }: HttpContext) {
+  async markFlashcardsAsNeedingUpdate({ params, response, auth }: HttpContext) {
     try {
       const user = await auth.authenticate()
-      const noteId = request.param('noteId')
+      const { noteId } = params
 
-      // Verify that the note exists and belongs to the user
-      const note = await Note.query().where('id', noteId).where('user_id', user.id).first()
+      await this.flashcardService.markFlashcardsAsNeedingUpdate(user.id, noteId)
 
-      if (!note) {
+      return response.ok({
+        message: 'Flashcards marked as needing update successfully',
+      })
+    } catch (error) {
+      if (error.message === 'Note not found or access denied') {
         return response.notFound({
           message: 'Note not found or you do not have access to it',
         })
       }
-
-      // Update all flashcards for this note that use note content
-      const updatedFlashcards = await Flashcard.query()
-        .where('note_id', noteId)
-        .where('using_note_content', true)
-        .update({ needsUpdate: true })
-
-      return response.ok({
-        message: 'Flashcards marked as needing update',
-        updatedCount: updatedFlashcards[0] || 0,
-      })
-    } catch (error) {
       return response.internalServerError({
         message: 'Failed to mark flashcards as needing update',
         error: error.message,
@@ -362,81 +219,112 @@ export default class FlashcardController {
     }
   }
 
-  async addLibraryItemToFlashcard({ request, response, auth }: HttpContext) {
+  // Starred flashcards methods
+  async getProjectStarredFlashcards({ params, response, auth }: HttpContext) {
     try {
       const user = await auth.authenticate()
-      const flashcardId = request.param('flashcardId')
-      const libraryItemId = request.param('libraryItemId')
+      const { projectId } = params
 
-      // Verify that the flashcard exists and belongs to the user
-      const flashcard = await Flashcard.query()
-        .where('id', flashcardId)
+      // Verify user owns the project
+      const project = await Project.query()
+        .where('id', projectId)
         .where('user_id', user.id)
         .first()
 
-      if (!flashcard) {
+      if (!project) {
         return response.notFound({
-          message: 'Flashcard not found or you do not have access to it',
+          message: 'Project not found or you do not have access to it',
         })
       }
 
-      // Verify library item exists and user has access
-      const LibraryItemModule = await import('#models/library_item')
-      const LibraryItem = LibraryItemModule.default
-      const libraryItem = await LibraryItem.query().where('id', libraryItemId).first()
-
-      if (!libraryItem) {
-        return response.notFound({
-          message: 'Library item not found',
-        })
-      }
-
-      // Attach the library item to the flashcard with timestamps
-      await flashcard.related('libraryItems').attach({
-        [libraryItemId]: {
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
+      // Load starred flashcards with their flashcard set information
+      await project.load('starredFlashcards', (query) => {
+        query.preload('flashcardSet')
       })
 
       return response.ok({
-        message: 'Library item added to flashcard successfully',
+        message: 'Starred flashcards retrieved successfully',
+        data: project.starredFlashcards,
       })
     } catch (error) {
       return response.internalServerError({
-        message: 'Failed to add library item to flashcard',
+        message: 'Failed to retrieve starred flashcards',
         error: error.message,
       })
     }
   }
 
-  async removeLibraryItemFromFlashcard({ request, response, auth }: HttpContext) {
+  async starFlashcard({ params, response, auth }: HttpContext) {
     try {
       const user = await auth.authenticate()
-      const flashcardId = request.param('flashcardId')
-      const libraryItemId = request.param('libraryItemId')
+      const { projectId, flashcardId } = params
 
-      // Verify that the flashcard exists and belongs to the user
-      const flashcard = await Flashcard.query()
-        .where('id', flashcardId)
+      // Verify user owns the project
+      const project = await Project.query()
+        .where('id', projectId)
         .where('user_id', user.id)
         .first()
 
-      if (!flashcard) {
+      if (!project) {
         return response.notFound({
-          message: 'Flashcard not found or you do not have access to it',
+          message: 'Project not found or you do not have access to it',
         })
       }
 
-      // Detach the library item from the flashcard
-      await flashcard.related('libraryItems').detach([libraryItemId])
+      // Verify flashcard exists and belongs to a flashcard set in this project
+      const flashcard = await Flashcard.query()
+        .where('id', flashcardId)
+        .preload('flashcardSet', (query) => {
+          query.where('project_id', projectId)
+        })
+        .first()
+
+      if (!flashcard || !flashcard.flashcardSet) {
+        return response.notFound({
+          message: 'Flashcard not found or does not belong to this project',
+        })
+      }
+
+      // Add to starred flashcards (attach will ignore duplicates)
+      await project.related('starredFlashcards').attach([flashcardId])
 
       return response.ok({
-        message: 'Library item removed from flashcard successfully',
+        message: 'Flashcard starred successfully',
       })
     } catch (error) {
       return response.internalServerError({
-        message: 'Failed to remove library item from flashcard',
+        message: 'Failed to star flashcard',
+        error: error.message,
+      })
+    }
+  }
+
+  async unstarFlashcard({ params, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { projectId, flashcardId } = params
+
+      // Verify user owns the project
+      const project = await Project.query()
+        .where('id', projectId)
+        .where('user_id', user.id)
+        .first()
+
+      if (!project) {
+        return response.notFound({
+          message: 'Project not found or you do not have access to it',
+        })
+      }
+
+      // Remove from starred flashcards
+      await project.related('starredFlashcards').detach([flashcardId])
+
+      return response.ok({
+        message: 'Flashcard unstarred successfully',
+      })
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to unstar flashcard',
         error: error.message,
       })
     }

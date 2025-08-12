@@ -1,0 +1,239 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.adonis_schema (
+  name character varying NOT NULL,
+  batch integer NOT NULL,
+  id integer NOT NULL DEFAULT nextval('adonis_schema_id_seq'::regclass),
+  migration_time timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT adonis_schema_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.adonis_schema_versions (
+  version integer NOT NULL,
+  CONSTRAINT adonis_schema_versions_pkey PRIMARY KEY (version)
+);
+CREATE TABLE public.auth_access_tokens (
+  tokenable_id uuid NOT NULL,
+  type character varying NOT NULL,
+  name character varying,
+  hash character varying NOT NULL,
+  abilities text NOT NULL,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  last_used_at timestamp with time zone,
+  expires_at timestamp with time zone,
+  id integer NOT NULL DEFAULT nextval('auth_access_tokens_id_seq'::regclass),
+  CONSTRAINT auth_access_tokens_pkey PRIMARY KEY (id),
+  CONSTRAINT auth_access_tokens_tokenable_id_foreign FOREIGN KEY (tokenable_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.flashcard_library_items (
+  flashcard_id uuid,
+  library_item_id uuid,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT flashcard_library_items_pkey PRIMARY KEY (id),
+  CONSTRAINT flashcard_library_items_flashcard_id_foreign FOREIGN KEY (flashcard_id) REFERENCES public.flashcards(id),
+  CONSTRAINT flashcard_library_items_library_item_id_foreign FOREIGN KEY (library_item_id) REFERENCES public.library_items(id)
+);
+CREATE TABLE public.flashcard_set_library_items (
+  flashcard_set_id uuid NOT NULL,
+  library_item_id uuid NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT flashcard_set_library_items_pkey PRIMARY KEY (id),
+  CONSTRAINT flashcard_set_library_items_library_item_id_foreign FOREIGN KEY (library_item_id) REFERENCES public.library_items(id),
+  CONSTRAINT flashcard_set_library_items_flashcard_set_id_foreign FOREIGN KEY (flashcard_set_id) REFERENCES public.flashcard_sets(id)
+);
+CREATE TABLE public.flashcard_set_notes (
+  flashcard_set_id uuid NOT NULL,
+  note_id uuid NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT flashcard_set_notes_pkey PRIMARY KEY (id),
+  CONSTRAINT flashcard_set_notes_note_id_foreign FOREIGN KEY (note_id) REFERENCES public.notes(id),
+  CONSTRAINT flashcard_set_notes_flashcard_set_id_foreign FOREIGN KEY (flashcard_set_id) REFERENCES public.flashcard_sets(id)
+);
+CREATE TABLE public.flashcard_sets (
+  user_id uuid,
+  project_id uuid,
+  name character varying NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT flashcard_sets_pkey PRIMARY KEY (id),
+  CONSTRAINT flashcard_sets_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT flashcard_sets_project_id_foreign FOREIGN KEY (project_id) REFERENCES public.projects(id)
+);
+CREATE TABLE public.flashcards (
+  flashcard_set_id uuid,
+  id uuid NOT NULL,
+  term text NOT NULL,
+  definition text NOT NULL,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  note_id uuid,
+  user_id uuid,
+  project_id uuid,
+  using_note_content boolean DEFAULT false,
+  needs_update boolean DEFAULT false,
+  CONSTRAINT flashcards_pkey PRIMARY KEY (id),
+  CONSTRAINT flashcards_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT flashcards_flashcard_set_id_foreign FOREIGN KEY (flashcard_set_id) REFERENCES public.flashcard_sets(id),
+  CONSTRAINT flashcards_project_id_foreign FOREIGN KEY (project_id) REFERENCES public.projects(id),
+  CONSTRAINT flashcards_note_id_foreign FOREIGN KEY (note_id) REFERENCES public.notes(id)
+);
+CREATE TABLE public.library_items (
+  project_id uuid,
+  folder_id uuid,
+  name character varying NOT NULL,
+  mime_type character varying NOT NULL,
+  storage_path character varying NOT NULL,
+  size bigint NOT NULL,
+  deleted_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  is_global boolean DEFAULT false,
+  uploaded_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  note_id uuid,
+  processing_status character varying NOT NULL DEFAULT 'queued'::character varying,
+  CONSTRAINT library_items_pkey PRIMARY KEY (id),
+  CONSTRAINT library_items_note_id_foreign FOREIGN KEY (note_id) REFERENCES public.notes(id),
+  CONSTRAINT library_items_project_id_foreign FOREIGN KEY (project_id) REFERENCES public.projects(id)
+);
+CREATE TABLE public.multiple_choice_questions (
+  multiple_choice_set_id uuid NOT NULL,
+  question text NOT NULL,
+  answer text NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT multiple_choice_questions_pkey PRIMARY KEY (id),
+  CONSTRAINT multiple_choice_questions_multiple_choice_set_id_foreign FOREIGN KEY (multiple_choice_set_id) REFERENCES public.multiple_choice_sets(id)
+);
+CREATE TABLE public.multiple_choice_set_library_items (
+  multiple_choice_set_id uuid NOT NULL,
+  library_item_id uuid NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT multiple_choice_set_library_items_pkey PRIMARY KEY (id),
+  CONSTRAINT multiple_choice_set_library_items_library_item_id_foreign FOREIGN KEY (library_item_id) REFERENCES public.library_items(id),
+  CONSTRAINT multiple_choice_set_library_items_multiple_choice_set_id_foreig FOREIGN KEY (multiple_choice_set_id) REFERENCES public.multiple_choice_sets(id)
+);
+CREATE TABLE public.multiple_choice_set_notes (
+  multiple_choice_set_id uuid NOT NULL,
+  note_id uuid NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT multiple_choice_set_notes_pkey PRIMARY KEY (id),
+  CONSTRAINT multiple_choice_set_notes_note_id_foreign FOREIGN KEY (note_id) REFERENCES public.notes(id),
+  CONSTRAINT multiple_choice_set_notes_multiple_choice_set_id_foreign FOREIGN KEY (multiple_choice_set_id) REFERENCES public.multiple_choice_sets(id)
+);
+CREATE TABLE public.multiple_choice_sets (
+  user_id uuid,
+  project_id uuid,
+  name character varying NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT multiple_choice_sets_pkey PRIMARY KEY (id),
+  CONSTRAINT multiple_choice_sets_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT multiple_choice_sets_project_id_foreign FOREIGN KEY (project_id) REFERENCES public.projects(id)
+);
+CREATE TABLE public.notes (
+  content text NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid,
+  project_id uuid,
+  name character varying NOT NULL DEFAULT ''::character varying,
+  CONSTRAINT notes_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.notifications (
+  user_id uuid NOT NULL,
+  project_id uuid NOT NULL,
+  type character varying NOT NULL CHECK (type::text = ANY (ARRAY['flashcard_generation'::character varying, 'multiple_choice_generation'::character varying]::text[])),
+  title character varying NOT NULL,
+  message text NOT NULL,
+  study_set_id character varying,
+  study_set_name character varying NOT NULL,
+  error_message text,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  status character varying NOT NULL DEFAULT 'queued'::character varying CHECK (status::text = ANY (ARRAY['queued'::character varying, 'completed'::character varying, 'failed'::character varying]::text[])),
+  progress integer NOT NULL DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+  created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_project_id_foreign FOREIGN KEY (project_id) REFERENCES public.projects(id),
+  CONSTRAINT notifications_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.projects (
+  user_id uuid,
+  name character varying NOT NULL,
+  description text,
+  folder_tree jsonb,
+  deleted_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  color character varying,
+  CONSTRAINT projects_pkey PRIMARY KEY (id),
+  CONSTRAINT projects_user_id_foreign FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.study_options (
+  flashcard character varying,
+  blurt_it_out character varying,
+  multiple_choice character varying,
+  fill_in_the_blank character varying,
+  matching character varying,
+  short_answer character varying,
+  essay character varying,
+  note_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT study_options_pkey PRIMARY KEY (id),
+  CONSTRAINT study_options_note_id_foreign FOREIGN KEY (note_id) REFERENCES public.notes(id)
+);
+CREATE TABLE public.users (
+  first_name character varying,
+  username character varying,
+  email character varying NOT NULL UNIQUE,
+  password character varying NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.workflow_library_items (
+  workflow_id uuid,
+  name character varying NOT NULL,
+  mime_type character varying NOT NULL,
+  storage_path character varying NOT NULL,
+  size bigint NOT NULL,
+  deleted_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  uploaded_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT workflow_library_items_pkey PRIMARY KEY (id),
+  CONSTRAINT workflow_library_items_workflow_id_foreign FOREIGN KEY (workflow_id) REFERENCES public.workflows(id)
+);
+CREATE TABLE public.workflows (
+  project_id uuid,
+  name character varying NOT NULL,
+  started_at timestamp with time zone NOT NULL,
+  ended_at timestamp with time zone,
+  summary text NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT workflows_pkey PRIMARY KEY (id),
+  CONSTRAINT workflows_project_id_foreign FOREIGN KEY (project_id) REFERENCES public.projects(id)
+);

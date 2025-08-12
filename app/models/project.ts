@@ -1,10 +1,13 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, hasMany, belongsTo } from '@adonisjs/lucid/orm'
+import { BaseModel, column, hasMany, belongsTo, manyToMany } from '@adonisjs/lucid/orm'
 import LibraryItem from '#models/library_item'
-import type { HasMany } from '@adonisjs/lucid/types/relations'
+import type { HasMany, ManyToMany } from '@adonisjs/lucid/types/relations'
 import Workflow from '#models/workflow'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 import User from '#models/user'
+import MultipleChoiceSet from './multiple_choice_set.js'
+import FlashcardSet from './flashcard_set.js'
+import Flashcard from './flashcard.js'
 
 // This will be the model for projects
 export default class Project extends BaseModel {
@@ -21,6 +24,9 @@ export default class Project extends BaseModel {
   @column()
   declare name: string
 
+  @column()
+  declare color?: string | null
+
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 
@@ -30,6 +36,7 @@ export default class Project extends BaseModel {
   @column.dateTime()
   declare deletedAt?: DateTime | null // Soft-delete
 
+  //delete this
   @hasMany(() => Workflow)
   declare workflows: HasMany<typeof Workflow>
 
@@ -38,6 +45,18 @@ export default class Project extends BaseModel {
 
   @belongsTo(() => User)
   declare user: BelongsTo<typeof User>
+
+  @hasMany(() => MultipleChoiceSet)
+  declare multipleChoiceSets: HasMany<typeof MultipleChoiceSet>
+
+  @hasMany(() => FlashcardSet)
+  declare flashcardSets: HasMany<typeof FlashcardSet>
+
+  @manyToMany(() => Flashcard, {
+    pivotTable: 'project_starred_flashcards',
+    pivotTimestamps: true,
+  })
+  declare starredFlashcards: ManyToMany<typeof Flashcard>
 
   @column({ columnName: 'folder_tree', serializeAs: 'folderTree' })
   declare folderTree?: JSON

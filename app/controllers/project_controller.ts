@@ -1,13 +1,24 @@
 import type { HttpContext } from '@adonisjs/core/http'
-import Project from '#models/project'
 import vine from '@vinejs/vine'
 import { errors as vineErrors } from '@vinejs/vine'
+import ProjectService from '#services/project_service'
 
 export default class ProjectController {
+  private projectService: ProjectService
+
+  constructor() {
+    this.projectService = new ProjectService()
+  }
+
   static createValidator = vine.compile(
     vine.object({
       name: vine.string().trim().minLength(1).maxLength(255),
       description: vine.string().trim().optional(),
+      color: vine
+        .string()
+        .trim()
+        .regex(/^#[0-9A-Fa-f]{6}$/)
+        .optional(),
     })
   )
 
@@ -17,9 +28,10 @@ export default class ProjectController {
       const user = await auth.authenticate()
       const payload = await request.validateUsing(ProjectController.createValidator)
 
-      const project = await Project.create({
+      const project = await this.projectService.createProject({
         name: payload.name,
         description: payload.description || null,
+        color: payload.color || null,
         userId: user.id,
       })
 
@@ -29,6 +41,7 @@ export default class ProjectController {
           id: project.id,
           name: project.name,
           description: project.description,
+          color: project.color,
           userId: project.userId,
           createdAt: project.createdAt,
           updatedAt: project.updatedAt,
@@ -53,10 +66,7 @@ export default class ProjectController {
     try {
       const user = await auth.authenticate()
 
-      const projects = await Project.query()
-        .where('userId', user.id)
-        .whereNull('deletedAt')
-        .orderBy('createdAt', 'desc')
+      const projects = await this.projectService.getUserProjects(user.id)
 
       return response.ok({
         message: 'Projects retrieved successfully',
@@ -64,6 +74,7 @@ export default class ProjectController {
           id: project.id,
           name: project.name,
           description: project.description,
+          color: project.color,
           userId: project.userId,
           createdAt: project.createdAt,
           updatedAt: project.updatedAt,
@@ -79,18 +90,13 @@ export default class ProjectController {
   async getProjectById({ response, params, auth }: HttpContext) {
     try {
       const user = await auth.authenticate()
-      const project = await Project.query()
-        .where('id', params.id)
-        .andWhere('userId', user.id)
-        .preload('workflows')
-        .preload('libraryItems')
-        .firstOrFail()
+      const project = await this.projectService.getProjectWithRelations(user.id, params.id)
 
       return response.ok({
         project,
       })
     } catch (error) {
-      if (error.code === 'E_ROW_NOT_FOUND') {
+      if (error.message.includes('not found')) {
         return response.notFound({ message: 'Project not found' })
       }
       return response.internalServerError({
@@ -98,4 +104,89 @@ export default class ProjectController {
       })
     }
   }
+
+  /**
+   * Get all notes for a specific project
+   */
+  async getProjectNotes({ response, params, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const projectId = params.id
+
+      // First verify user has access to the project
+      await this.projectService.getProjectById(user.id, projectId)
+
+      // Get notes for this project
+      const notes = await this.projectService.getProjectNotes(user.id, projectId)
+
+      return response.ok({
+        message: 'Project notes retrieved successfully',
+        data: {
+          notes: notes,
+        },
+      })
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Project not found' })
+      }
+      return response.internalServerError({
+        message: 'Failed to retrieve project notes',
+        error: error.message,
+      })
+    }
+  }
+
+  /**
+   * Get note summaries for a specific project (lightweight - no content)
+   */
+  async getProjectNotesSummary({ response, params, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const projectId = params.id
+      // First verify user has access to the project
+      await this.projectService.getProjectById(user.id, projectId)
+      // Get note summaries for this project
+      const notesSummary = await this.projectService.getProjectNotesSummary(user.id, projectId)
+      return response.ok({
+        message: 'Project notes summary retrieved successfully',
+        data: {
+          notes: notesSummary,
+        },
+      })
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Project not found' })
+      }
+      return response.internalServerError({
+        message: 'Failed to retrieve project notes summary',
+      })
+    }
+  }
+
+  /**
+   * Get optimized data for tools screen - only summary counts and basic info
+   */
+  async getProjectToolsData({ response, params, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const projectId = params.id
+
+      const toolsData = await this.projectService.getProjectToolsData(user.id, projectId)
+
+      return response.ok({
+        message: 'Project tools data retrieved successfully',
+        data: toolsData,
+      })
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Project not found' })
+      }
+      return response.internalServerError({
+        message: 'Failed to retrieve project tools data',
+        error: error.message,
+      })
+    }
+  }
+
+  // SSE functionality removed - using static notifications only
 }

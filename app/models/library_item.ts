@@ -31,6 +31,9 @@ export default class LibraryItem extends BaseModel {
   @column()
   declare isGlobal: boolean // New flag — true ⇒ file is global
 
+  @column()
+  declare processingStatus: string // Processing status
+
   @column.dateTime()
   declare uploadedAt: DateTime // Defaults to now()
 

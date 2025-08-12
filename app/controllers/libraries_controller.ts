@@ -1,12 +1,15 @@
 import type { HttpContext } from '@adonisjs/core/http'
-import LibraryItem from '#models/library_item'
-import Project from '#models/project'
 import vine from '@vinejs/vine'
-import { randomUUID } from 'node:crypto'
-import { getPresignedUrl, getPresignedViewUrl } from '../utils/s3.js'
-import { DateTime } from 'luxon'
+import { errors as vineErrors } from '@vinejs/vine'
+import LibraryService from '#services/library_service'
 
 export default class LibrariesController {
+  private libraryService: LibraryService
+
+  constructor() {
+    this.libraryService = new LibraryService()
+  }
+
   static presignedUrlValidator = vine.compile(
     vine.object({
       fileName: vine.string().trim().minLength(1).maxLength(255),
@@ -26,96 +29,164 @@ export default class LibrariesController {
   )
 
   async getPresignedUrl({ request, response, auth }: HttpContext) {
-    await auth.authenticate()
-    const payload = await request.validateUsing(LibrariesController.presignedUrlValidator)
+    try {
+      await auth.authenticate()
+      const payload = await request.validateUsing(LibrariesController.presignedUrlValidator)
 
-    const presignedUrl = await getPresignedUrl(payload.fileName, payload.fileType)
+      const result = await this.libraryService.getPresignedUrl({
+        fileName: payload.fileName,
+        fileType: payload.fileType,
+      })
 
-    return response.json({
-      presignedUrl,
-      key: presignedUrl.key,
-      expiresIn: presignedUrl.expiresIn,
-    })
+      return response.json(result)
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+
+      // Log the actual error for debugging
+      console.error('Presigned URL generation error:', error)
+
+      // Check for specific AWS errors
+      if (error.message?.includes('credentials') || error.message?.includes('AWS')) {
+        return response.internalServerError({
+          message: 'AWS configuration error. Please check S3 credentials and bucket settings.',
+          error: error.message,
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to generate presigned URL',
+        error: error.message,
+      })
+    }
   }
 
   async uploadFile({ request, response, auth }: HttpContext) {
-    const user = await auth.authenticate()
-    const payload = await request.validateUsing(LibrariesController.uploadValidator)
+    try {
+      const user = await auth.authenticate()
+      const payload = await request.validateUsing(LibrariesController.uploadValidator)
 
-    const project = await Project.query()
-      .where('id', payload.projectId)
-      .where('user_id', user.id)
-      .firstOrFail()
-    const randomId = randomUUID()
+      const libraryItem = await this.libraryService.createLibraryItem({
+        projectId: payload.projectId,
+        key: payload.key,
+        fileName: payload.fileName,
+        fileType: payload.fileType,
+        size: payload.size,
+        isGlobal: payload.isGlobal || false,
+        userId: user.id,
+      })
 
-    const libraryItem = await LibraryItem.create({
-      id: randomId,
-      projectId: project.id,
-      name: payload.fileName,
-      mimeType: payload.fileType,
-      storagePath: payload.key,
-      size: payload.size,
-      isGlobal: payload.isGlobal || false,
-      uploadedAt: DateTime.now(),
-    })
+      return response.created(libraryItem)
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
 
-    return response.created(libraryItem)
+      // Log the actual error for debugging
+      console.error('Library item creation error:', error)
+
+      // Check for specific authorization errors
+      if (error.message?.includes('not found') || error.message?.includes('access')) {
+        return response.notFound({
+          message: 'Project not found or access denied',
+          error: error.message,
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to create library item',
+        error: error.message,
+      })
+    }
   }
 
   async getAllLibraryItems({ response, auth }: HttpContext) {
-    const user = await auth.authenticate()
-
-    // 1. Get all project IDs belonging to the user
-    const userProjects = await Project.query().where('user_id', user.id).select('id')
-    const projectIds = userProjects.map((p) => p.id)
-
-    if (projectIds.length === 0) {
-      return response.json([])
+    try {
+      const user = await auth.authenticate()
+      const libraryItems = await this.libraryService.getAllLibraryItems(user.id)
+      return response.json(libraryItems)
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to retrieve library items',
+      })
     }
-
-    // 2. Get all library items for those projects
-    const libraryItems = await LibraryItem.query()
-      .whereIn('project_id', projectIds)
-      .orderBy('created_at', 'desc')
-
-    return response.json(libraryItems)
   }
 
   async getProjectLibraryItems({ request, response, auth }: HttpContext) {
-    const user = await auth.authenticate()
-    const projectId = request.param('projectId')
+    try {
+      const user = await auth.authenticate()
+      const projectId = request.param('projectId')
 
-    await Project.query().where('id', projectId).where('user_id', user.id).firstOrFail()
+      const libraryItems = await this.libraryService.getProjectLibraryItems(user.id, projectId)
+      return response.json(libraryItems)
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Project not found' })
+      }
+      return response.internalServerError({
+        message: 'Failed to retrieve project library items',
+      })
+    }
+  }
 
-    const libraryItems = await LibraryItem.query()
-      .where('project_id', projectId)
-      .orderBy('created_at', 'desc')
+  async getLibraryItemById({ request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const libraryItemId = request.param('id')
 
-    return response.json(libraryItems)
+      const libraryItem = await this.libraryService.getLibraryItemById(user.id, libraryItemId)
+      return response.json({ data: libraryItem.serialize() })
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Library item not found' })
+      }
+      return response.internalServerError({
+        message: 'Failed to retrieve library item',
+      })
+    }
   }
 
   async getLibraryItemViewUrl({ request, response, auth }: HttpContext) {
-    const user = await auth.authenticate()
-    const libraryItemId = request.param('id')
+    try {
+      const user = await auth.authenticate()
+      const libraryItemId = request.param('id')
 
-    const libraryItem = await LibraryItem.findOrFail(libraryItemId)
-    await Project.query().where('id', libraryItem.projectId).where('user_id', user.id).firstOrFail()
-
-    const { presignedUrl } = await getPresignedViewUrl(libraryItem.storagePath)
-
-    return response.json({ url: presignedUrl })
+      const result = await this.libraryService.getLibraryItemViewUrl(user.id, libraryItemId)
+      return response.json({ url: result.presignedUrl })
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Library item not found' })
+      }
+      return response.internalServerError({
+        message: 'Failed to generate view URL',
+      })
+    }
   }
 
   async toggleGlobalStatus({ request, response, auth }: HttpContext) {
-    const user = await auth.authenticate()
-    const libraryItemId = request.param('id')
+    try {
+      const user = await auth.authenticate()
+      const libraryItemId = request.param('id')
 
-    const libraryItem = await LibraryItem.findOrFail(libraryItemId)
-    await Project.query().where('id', libraryItem.projectId).where('user_id', user.id).firstOrFail()
-
-    libraryItem.isGlobal = !libraryItem.isGlobal
-    await libraryItem.save()
-
-    return response.ok(libraryItem)
+      const libraryItem = await this.libraryService.toggleGlobalStatus(user.id, libraryItemId)
+      return response.ok(libraryItem)
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Library item not found' })
+      }
+      if (error.message.includes('permission')) {
+        return response.forbidden({ message: error.message })
+      }
+      return response.internalServerError({
+        message: 'Failed to toggle global status',
+      })
+    }
   }
 }

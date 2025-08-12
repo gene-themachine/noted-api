@@ -5,13 +5,17 @@ import Note from '#models/note'
 import User from './user.js'
 import Project from './project.js'
 import LibraryItem from './library_item.js'
+import FlashcardSet from './flashcard_set.js'
 
 export default class Flashcard extends BaseModel {
   @column({ isPrimary: true })
   declare id: string
 
   @column({ columnName: 'note_id' })
-  declare noteId: string
+  declare noteId: string | null
+
+  @column({ columnName: 'flashcard_set_id' })
+  declare flashcardSetId: string | null
 
   @column()
   declare term: string
@@ -27,6 +31,9 @@ export default class Flashcard extends BaseModel {
 
   @belongsTo(() => Note)
   declare note: BelongsTo<typeof Note>
+
+  @belongsTo(() => FlashcardSet)
+  declare flashcardSet: BelongsTo<typeof FlashcardSet>
 
   @column({ columnName: 'using_note_content' })
   declare usingNoteContent: boolean
@@ -50,4 +57,10 @@ export default class Flashcard extends BaseModel {
     pivotTable: 'flashcard_library_items',
   })
   declare libraryItems: ManyToMany<typeof LibraryItem>
+
+  @manyToMany(() => Project, {
+    pivotTable: 'project_starred_flashcards',
+    pivotTimestamps: true,
+  })
+  declare starredByProjects: ManyToMany<typeof Project>
 }

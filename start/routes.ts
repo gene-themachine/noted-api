@@ -14,10 +14,16 @@ const ProjectController = () => import('#controllers/project_controller')
 const NotesController = () => import('#controllers/notes_controller')
 const LibrariesController = () => import('#controllers/libraries_controller')
 const FlashcardController = () => import('#controllers/flashcard_controller')
+const MultipleChoiceController = () => import('#controllers/multiple_choice_controller')
+const NotificationsController = () => import('#controllers/notifications_controller')
+const QAController = () => import('#controllers/qa_controller')
+const TodoController = () => import('#controllers/todo_controller')
 
 // Public routes (no authentication required)
-router.post('/auth/register', [AuthController, 'register'])
-router.post('/auth/login', [AuthController, 'login'])
+router.group(() => {
+  router.post('/auth/register', [AuthController, 'register'])
+  router.post('/auth/login', [AuthController, 'login'])
+})
 
 // Protected routes (authentication required)
 router
@@ -29,6 +35,10 @@ router
     router.post('/projects', [ProjectController, 'createNewProject'])
     router.get('/projects', [ProjectController, 'getUserProjects'])
     router.get('/projects/:id', [ProjectController, 'getProjectById'])
+    router.get('/projects/:id/notes', [ProjectController, 'getProjectNotes'])
+    // Lightweight endpoint for note selection UI - returns only essential fields without content
+    router.get('/projects/:id/notes/summary', [ProjectController, 'getProjectNotesSummary'])
+    router.get('/projects/:id/tools-data', [ProjectController, 'getProjectToolsData'])
 
     // Notes routes
     router.get('/notes/:noteId', [NotesController, 'getNoteById'])
@@ -39,12 +49,21 @@ router
     router.delete('/projects/:projectId/folders/:folderId', [NotesController, 'deleteFolder'])
     router.get('/projects/:projectId/tree', [NotesController, 'getProjectTree'])
 
+    // Note flashcard routes
+    router.put('/notes/:noteId/flashcards/mark-needs-update', [
+      FlashcardController,
+      'markFlashcardsAsNeedingUpdate',
+    ])
+
     // Study options routes
     router.get('/notes/:noteId/study-options', [NotesController, 'getStudyOptions'])
     router.put('/notes/:noteId/study-options', [NotesController, 'updateStudyOptions'])
     router.get('/study-options', [NotesController, 'getAvailableStudyOptions'])
 
-    // New routes for note-library item association
+    // Q&A routes
+    router.post('/notes/:noteId/qa/generate', [QAController, 'generate'])
+
+    // New routes for not
     router.post('/notes/:noteId/library-items/:libraryItemId', [
       NotesController,
       'addLibraryItemToNote',
@@ -54,26 +73,48 @@ router
       'removeLibraryItemFromNote',
     ])
 
-    // Flashcard routes
-    router.post('/flashcards/create', [FlashcardController, 'createFlashcards'])
-    router.get('/notes/:noteId/flashcards', [FlashcardController, 'getFlashcardsByNote'])
-    router.get('/notes/:noteId/flashcards/status', [
+    // Project-level Flashcard Set routes
+    router.get('/projects/:projectId/study-sets/flashcards', [
       FlashcardController,
-      'getFlashcardGenerationStatus',
+      'getProjectFlashcardSets',
     ])
-    router.put('/notes/:noteId/flashcards/mark-needs-update', [
+    router.post('/projects/:projectId/study-sets/flashcards', [
       FlashcardController,
-      'markFlashcardsAsNeedingUpdate',
+      'createProjectFlashcardSet',
+    ])
+    router.get('/study-sets/flashcards/:setId', [FlashcardController, 'getFlashcardSet'])
+    router.delete('/study-sets/flashcards/:setId', [FlashcardController, 'deleteFlashcardSet'])
+
+    // Starred flashcards routes
+    router.get('/projects/:projectId/starred-flashcards', [
+      FlashcardController,
+      'getProjectStarredFlashcards',
+    ])
+    router.post('/projects/:projectId/flashcards/:flashcardId/star', [
+      FlashcardController,
+      'starFlashcard',
+    ])
+    router.delete('/projects/:projectId/flashcards/:flashcardId/star', [
+      FlashcardController,
+      'unstarFlashcard',
     ])
 
-    // Flashcard-Library relationship routes
-    router.post('/flashcards/:flashcardId/library-items/:libraryItemId', [
-      FlashcardController,
-      'addLibraryItemToFlashcard',
+    // Project-level Multiple Choice Set routes
+    router.get('/projects/:projectId/study-sets/multiple-choice', [
+      MultipleChoiceController,
+      'getProjectMultipleChoiceSets',
     ])
-    router.delete('/flashcards/:flashcardId/library-items/:libraryItemId', [
-      FlashcardController,
-      'removeLibraryItemFromFlashcard',
+    router.post('/projects/:projectId/study-sets/multiple-choice', [
+      MultipleChoiceController,
+      'createProjectMultipleChoiceSet',
+    ])
+    router.get('/study-sets/multiple-choice/:setId', [
+      MultipleChoiceController,
+      'getProjectMultipleChoiceSet',
+    ])
+    router.delete('/study-sets/multiple-choice/:setId', [
+      MultipleChoiceController,
+      'deleteProjectMultipleChoiceSet',
     ])
 
     // Libraries routes
@@ -81,23 +122,39 @@ router
     router.post('/libraries/upload', [LibrariesController, 'uploadFile'])
     router.get('/libraries', [LibrariesController, 'getAllLibraryItems'])
     router.get('/libraries/projects/:projectId', [LibrariesController, 'getProjectLibraryItems'])
+    router.get('/libraries/:id', [LibrariesController, 'getLibraryItemById'])
     router.get('/libraries/:id/view', [LibrariesController, 'getLibraryItemViewUrl'])
     router.put('/libraries/:id/toggle-global', [LibrariesController, 'toggleGlobalStatus'])
+
+    // Notification routes
+    router.get('/projects/:projectId/notifications', [
+      NotificationsController,
+      'getProjectNotifications',
+    ])
+    router.get('/notifications', [NotificationsController, 'getUserNotifications'])
+    router.delete('/notifications/:notificationId', [NotificationsController, 'deleteNotification'])
+    router.delete('/projects/:projectId/notifications/completed', [
+      NotificationsController,
+      'clearCompletedNotifications',
+    ])
+
+    // Todo routes
+    router.get('/todos', [TodoController, 'index'])
+    router.post('/todos', [TodoController, 'store'])
+    router.get('/todos/:id', [TodoController, 'show'])
+    router.put('/todos/:id', [TodoController, 'update'])
+    router.delete('/todos/:id', [TodoController, 'destroy'])
+    router.patch('/todos/:id/toggle', [TodoController, 'toggle'])
   })
   .use(middleware.auth())
 
-// Custom route for SSE with token authentication
-router
-  .get('/notes/:noteId/flashcards/events', [FlashcardController, 'streamFlashcardStatus'])
-  .use(async (ctx, next) => {
-    // Manually handle authentication from query param for EventSource
-    const token = ctx.request.qs().token
-    if (token) {
-      ctx.request.request.headers.authorization = `Bearer ${token}`
-    }
-    await ctx.auth.authenticate()
-    return next()
-  })
+// SSE Q&A streaming endpoint (outside auth middleware to handle manual auth)
+router.get('/notes/:noteId/qa/stream', [QAController, 'streamSSE'])
+
+// Test endpoint for debugging Q&A streaming
+router.get('/test/qa', [QAController, 'test'])
+
+// SSE functionality removed - using static notifications only
 
 // Basic route
 router.get('/', async () => {
