@@ -9,10 +9,10 @@ let s3Client: S3Client | null = null
 function getS3Client(): S3Client {
   if (!s3Client) {
     s3Client = new S3Client({
-      region: env.get('AWS_REGION')!,
+      region: env.get('NOTED_AWS_REGION')!,
       credentials: {
-        accessKeyId: env.get('AWS_ACCESS_KEY_ID')!,
-        secretAccessKey: env.get('AWS_SECRET_ACCESS_KEY')!,
+        accessKeyId: env.get('NOTED_AWS_ACCESS_KEY_ID')!,
+        secretAccessKey: env.get('NOTED_AWS_SECRET_ACCESS_KEY')!,
       },
     })
   }
