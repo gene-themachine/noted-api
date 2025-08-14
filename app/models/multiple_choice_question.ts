@@ -1,7 +1,8 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo } from '@adonisjs/lucid/orm'
-import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import { BaseModel, column, belongsTo, manyToMany } from '@adonisjs/lucid/orm'
+import type { BelongsTo, ManyToMany } from '@adonisjs/lucid/types/relations'
 import MultipleChoiceSet from '#models/multiple_choice_set'
+import Project from '#models/project'
 
 export default class MultipleChoiceQuestion extends BaseModel {
   @column({ isPrimary: true })
@@ -24,4 +25,10 @@ export default class MultipleChoiceQuestion extends BaseModel {
 
   @belongsTo(() => MultipleChoiceSet)
   declare multipleChoiceSet: BelongsTo<typeof MultipleChoiceSet>
+
+  @manyToMany(() => Project, {
+    pivotTable: 'project_starred_multiple_choice_questions',
+    pivotTimestamps: true,
+  })
+  declare starredByProjects: ManyToMany<typeof Project>
 }

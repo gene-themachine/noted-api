@@ -15,6 +15,7 @@ const NotesController = () => import('#controllers/notes_controller')
 const LibrariesController = () => import('#controllers/libraries_controller')
 const FlashcardController = () => import('#controllers/flashcard_controller')
 const MultipleChoiceController = () => import('#controllers/multiple_choice_controller')
+const FreeResponseController = () => import('#controllers/free_response_controller')
 const NotificationsController = () => import('#controllers/notifications_controller')
 const QAController = () => import('#controllers/qa_controller')
 const TodoController = () => import('#controllers/todo_controller')
@@ -99,6 +100,20 @@ router
       'unstarFlashcard',
     ])
 
+    // Starred multiple choice questions routes
+    router.get('/projects/:projectId/starred-multiple-choice-questions', [
+      MultipleChoiceController,
+      'getProjectStarredMultipleChoiceQuestions',
+    ])
+    router.post('/projects/:projectId/multiple-choice-questions/:questionId/star', [
+      MultipleChoiceController,
+      'starMultipleChoiceQuestion',
+    ])
+    router.delete('/projects/:projectId/multiple-choice-questions/:questionId/star', [
+      MultipleChoiceController,
+      'unstarMultipleChoiceQuestion',
+    ])
+
     // Project-level Multiple Choice Set routes
     router.get('/projects/:projectId/study-sets/multiple-choice', [
       MultipleChoiceController,
@@ -115,6 +130,34 @@ router
     router.delete('/study-sets/multiple-choice/:setId', [
       MultipleChoiceController,
       'deleteProjectMultipleChoiceSet',
+    ])
+
+    // Project-level Free Response Set routes
+    router.get('/projects/:projectId/study-sets/free-response', [
+      FreeResponseController,
+      'getProjectFreeResponseSets',
+    ])
+    router.post('/projects/:projectId/study-sets/free-response', [
+      FreeResponseController,
+      'createProjectFreeResponseSet',
+    ])
+    router.get('/study-sets/free-response/:setId', [
+      FreeResponseController,
+      'getProjectFreeResponseSet',
+    ])
+    router.delete('/study-sets/free-response/:setId', [
+      FreeResponseController,
+      'deleteProjectFreeResponseSet',
+    ])
+
+    // Free Response evaluation routes
+    router.post('/free-response/:questionId/evaluate', [
+      FreeResponseController,
+      'evaluateUserResponse',
+    ])
+    router.get('/free-response/:questionId/evaluations', [
+      FreeResponseController,
+      'getEvaluationHistory',
     ])
 
     // Libraries routes

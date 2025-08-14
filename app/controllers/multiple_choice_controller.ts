@@ -4,6 +4,8 @@ import { errors as vineErrors } from '@vinejs/vine'
 import MultipleChoiceSet from '#models/multiple_choice_set'
 import Note from '#models/note'
 import LibraryItem from '#models/library_item'
+import Project from '#models/project'
+import MultipleChoiceQuestion from '#models/multiple_choice_question'
 import { MultipleChoiceService } from '#services/multiple_choice_service'
 import AIService from '#services/ai_service'
 
@@ -200,6 +202,108 @@ export default class MultipleChoiceController {
       }
       return response.internalServerError({
         message: 'Failed to delete multiple choice set',
+        error: error.message,
+      })
+    }
+  }
+
+  // Starred multiple choice questions methods
+  async getProjectStarredMultipleChoiceQuestions({ params, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { projectId } = params
+
+      // Verify user owns the project
+      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
+
+      if (!project) {
+        return response.notFound({
+          message: 'Project not found or you do not have access to it',
+        })
+      }
+
+      // Load starred multiple choice questions with their set information
+      await project.load('starredMultipleChoiceQuestions', (query) => {
+        query.preload('multipleChoiceSet')
+      })
+
+      return response.ok({
+        message: 'Starred multiple choice questions retrieved successfully',
+        data: project.starredMultipleChoiceQuestions,
+      })
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to retrieve starred multiple choice questions',
+        error: error.message,
+      })
+    }
+  }
+
+  async starMultipleChoiceQuestion({ params, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { projectId, questionId } = params
+
+      // Verify user owns the project
+      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
+
+      if (!project) {
+        return response.notFound({
+          message: 'Project not found or you do not have access to it',
+        })
+      }
+
+      // Verify question exists and belongs to a multiple choice set in this project
+      const question = await MultipleChoiceQuestion.query()
+        .where('id', questionId)
+        .preload('multipleChoiceSet', (query) => {
+          query.where('project_id', projectId)
+        })
+        .first()
+
+      if (!question || !question.multipleChoiceSet) {
+        return response.notFound({
+          message: 'Multiple choice question not found or does not belong to this project',
+        })
+      }
+
+      // Add to starred questions (attach will ignore duplicates)
+      await project.related('starredMultipleChoiceQuestions').attach([questionId])
+
+      return response.ok({
+        message: 'Multiple choice question starred successfully',
+      })
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to star multiple choice question',
+        error: error.message,
+      })
+    }
+  }
+
+  async unstarMultipleChoiceQuestion({ params, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { projectId, questionId } = params
+
+      // Verify user owns the project
+      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
+
+      if (!project) {
+        return response.notFound({
+          message: 'Project not found or you do not have access to it',
+        })
+      }
+
+      // Remove from starred questions
+      await project.related('starredMultipleChoiceQuestions').detach([questionId])
+
+      return response.ok({
+        message: 'Multiple choice question unstarred successfully',
+      })
+    } catch (error) {
+      return response.internalServerError({
+        message: 'Failed to unstar multiple choice question',
         error: error.message,
       })
     }

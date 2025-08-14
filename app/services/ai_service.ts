@@ -8,6 +8,7 @@ import { getCompletion, truncateToTokenLimit } from '../utils/openai.js'
 import { downloadAndExtractText } from '../utils/pdf_extractor.js'
 import { createFlashcardPrompt } from '../prompts/flashcard.js'
 import { createMultipleChoicePrompt } from '../prompts/multiple_choice.js'
+import { createFreeResponsePrompt } from '../prompts/free_response.js'
 import { extractJsonFromResponse, combineContentSources } from '../prompts/shared.js'
 
 export interface FlashcardGenerationData {
@@ -20,6 +21,14 @@ export interface FlashcardGenerationData {
 
 export interface MultipleChoiceGenerationData {
   multipleChoiceSetId: string
+  userId: string
+  projectId: string
+  selectedNoteIds: string[]
+  selectedLibraryItemIds: string[]
+}
+
+export interface FreeResponseGenerationData {
+  freeResponseSetId: string
   userId: string
   projectId: string
   selectedNoteIds: string[]
@@ -204,6 +213,91 @@ export default class AIService {
     }
   }
 
+  async generateFreeResponseSet(data: FreeResponseGenerationData) {
+    const { freeResponseSetId, userId, projectId, selectedNoteIds, selectedLibraryItemIds } = data
+
+    console.log(`🎯 Starting free response set generation for set: ${freeResponseSetId}`)
+    console.log(`👤 User: ${userId}`)
+    console.log(`📁 Project: ${projectId}`)
+    console.log(`📄 Notes: ${selectedNoteIds.length}`)
+    console.log(`📚 Library items: ${selectedLibraryItemIds.length}`)
+
+    if (!freeResponseSetId) {
+      throw new Error('Missing freeResponseSetId')
+    }
+
+    try {
+      const contentSources: string[] = []
+      const setName = `Free Response Set ${freeResponseSetId}`
+
+      // 1. Fetch content from all selected notes
+      for (const noteId of selectedNoteIds) {
+        console.log(`📄 Fetching note: ${noteId}`)
+        const noteData = await this.fetchNoteData(noteId, userId)
+        if (noteData) {
+          const noteContent = noteData.content || ''
+          const noteName = noteData.name || 'Untitled Note'
+          if (noteContent.trim()) {
+            contentSources.push(`=== Note: ${noteName} ===\n${noteContent}`)
+            console.log(`✅ Added note content (${noteContent.length} chars)`)
+          } else {
+            console.log(`⚠️ Note ${noteId} content is empty`)
+          }
+        } else {
+          console.log(`❌ Could not fetch note ${noteId}`)
+        }
+      }
+
+      // 2. Fetch content from selected library items
+      if (selectedLibraryItemIds.length > 0) {
+        console.log(`📚 Fetching ${selectedLibraryItemIds.length} library items`)
+        const libraryItems = await this.fetchLibraryItems(selectedLibraryItemIds, projectId)
+        if (libraryItems.length > 0) {
+          const fileContent = await this.extractContentFromFiles(libraryItems)
+          if (fileContent.trim()) {
+            contentSources.push(fileContent)
+            console.log(`✅ Added library content (${fileContent.length} chars)`)
+          } else {
+            console.log('⚠️ No content extracted from library items')
+          }
+        }
+      }
+
+      // 3. Validate we have content to work with
+      if (contentSources.length === 0) {
+        throw new Error('No content available for free response set generation')
+      }
+
+      console.log(`📝 Total content sources: ${contentSources.length}`)
+
+      // 4. Generate questions using AI
+      const questions = await this.generateFreeResponseWithAI(contentSources, setName)
+
+      if (!questions || questions.length === 0) {
+        throw new Error('AI failed to generate free response questions')
+      }
+
+      // 5. Save questions to database with set association
+      const success = await this.saveFreeResponseSetToDatabase(questions, freeResponseSetId)
+
+      if (success) {
+        console.log(
+          `✅ Free response set generation completed successfully - ${questions.length} questions created`
+        )
+        return {
+          status: 'success',
+          message: `Generated ${questions.length} questions successfully`,
+          questionsCount: questions.length,
+        }
+      } else {
+        throw new Error('Failed to save questions to database')
+      }
+    } catch (error) {
+      console.error(`❌ Free response set generation failed: ${error}`)
+      throw error
+    }
+  }
+
   private async fetchNoteData(noteId: string, userId: string) {
     console.log(`📄 Fetching note data for note: ${noteId}`)
     try {
@@ -365,6 +459,47 @@ export default class AIService {
     }
   }
 
+  private async generateFreeResponseWithAI(
+    contentSources: string[],
+    setName: string
+  ): Promise<Array<{ question: string; answer: string }>> {
+    console.log(`🤖 Generating free response questions using AI for set: '${setName}'`)
+
+    // Combine all content sources
+    const combinedContent = combineContentSources(contentSources)
+
+    if (!combinedContent.trim()) {
+      console.log('❌ No content available for free response generation')
+      return []
+    }
+
+    console.log(`📝 Processing ${combinedContent.length} characters of content`)
+
+    // Truncate if necessary
+    const truncatedContent = truncateToTokenLimit(combinedContent)
+
+    // Create AI prompt for free response generation
+    const prompt = createFreeResponsePrompt(truncatedContent, setName)
+
+    try {
+      const response = await getCompletion(prompt, this.defaultModel)
+      console.log(`✅ AI response received (${response.length} characters)`)
+
+      // Parse the JSON response
+      const parsedResponse = extractJsonFromResponse(response)
+      if (Array.isArray(parsedResponse)) {
+        const questions = parsedResponse
+        console.log(`✅ Successfully parsed ${questions.length} free response questions`)
+        return questions
+      } else {
+        return []
+      }
+    } catch (error) {
+      console.error(`❌ Error generating free response questions with AI: ${error}`)
+      return []
+    }
+  }
+
   private async saveFlashcardSetToDatabase(
     flashcards: Array<{ term: string; definition: string }>,
     flashcardSetId: string,
@@ -441,6 +576,45 @@ export default class AIService {
     } catch (error) {
       await trx.rollback()
       console.error(`❌ Error saving questions to database: ${error}`)
+      throw error
+    }
+  }
+
+  private async saveFreeResponseSetToDatabase(
+    questions: Array<{ question: string; answer: string }>,
+    freeResponseSetId: string
+  ): Promise<boolean> {
+    if (questions.length === 0) {
+      console.log('❌ No questions to save')
+      return false
+    }
+
+    console.log(
+      `💾 Saving ${questions.length} free response questions to database for set ${freeResponseSetId}`
+    )
+
+    const trx = await Database.transaction()
+
+    try {
+      // Prepare question records
+      const questionRecords = questions.map((question) => ({
+        id: uuidv4(),
+        free_response_set_id: freeResponseSetId,
+        question: question.question,
+        answer: question.answer,
+        created_at: DateTime.utc().toSQL(),
+        updated_at: DateTime.utc().toSQL(),
+      }))
+
+      // Insert questions
+      await trx.table('free_responses').insert(questionRecords)
+      console.log(`✅ Successfully inserted ${questionRecords.length} free response questions`)
+
+      await trx.commit()
+      return true
+    } catch (error) {
+      await trx.rollback()
+      console.error(`❌ Error saving free response questions to database: ${error}`)
       throw error
     }
   }

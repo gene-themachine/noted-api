@@ -8,6 +8,7 @@ import User from '#models/user'
 import MultipleChoiceSet from './multiple_choice_set.js'
 import FlashcardSet from './flashcard_set.js'
 import Flashcard from './flashcard.js'
+import MultipleChoiceQuestion from './multiple_choice_question.js'
 
 // This will be the model for projects
 export default class Project extends BaseModel {
@@ -57,6 +58,12 @@ export default class Project extends BaseModel {
     pivotTimestamps: true,
   })
   declare starredFlashcards: ManyToMany<typeof Flashcard>
+
+  @manyToMany(() => MultipleChoiceQuestion, {
+    pivotTable: 'project_starred_multiple_choice_questions',
+    pivotTimestamps: true,
+  })
+  declare starredMultipleChoiceQuestions: ManyToMany<typeof MultipleChoiceQuestion>
 
   @column({ columnName: 'folder_tree', serializeAs: 'folderTree' })
   declare folderTree?: JSON
