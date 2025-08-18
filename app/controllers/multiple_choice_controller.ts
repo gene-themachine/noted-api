@@ -21,6 +21,12 @@ export default class MultipleChoiceController {
     })
   )
 
+  static updateMultipleChoiceSetValidator = vine.compile(
+    vine.object({
+      name: vine.string().trim().minLength(1),
+    })
+  )
+
   // Project-level multiple choice set methods
   async getProjectMultipleChoiceSets({ params, response, auth }: HttpContext) {
     try {
@@ -179,6 +185,45 @@ export default class MultipleChoiceController {
       }
       return response.internalServerError({
         message: 'Failed to retrieve multiple choice set',
+        error: error.message,
+      })
+    }
+  }
+
+  async updateProjectMultipleChoiceSet({ params, request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { setId } = params
+      const payload = await request.validateUsing(
+        MultipleChoiceController.updateMultipleChoiceSetValidator
+      )
+
+      const updatedMultipleChoiceSet = await this.multipleChoiceService.updateMultipleChoiceSet(
+        user.id,
+        setId,
+        payload
+      )
+
+      return response.ok({
+        message: 'Multiple choice set updated successfully',
+        data: updatedMultipleChoiceSet,
+      })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+
+      if (error.message === 'Multiple choice set not found or access denied') {
+        return response.notFound({
+          message: 'Multiple choice set not found or you do not have access to it',
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to update multiple choice set',
         error: error.message,
       })
     }

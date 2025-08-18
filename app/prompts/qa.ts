@@ -16,14 +16,15 @@ ${contextSection}## Question
 ${question}
 
 ## Instructions
-- Provide a clear, concise answer based on the context provided
-- If the context doesn't contain enough information to fully answer the question, acknowledge this and provide what information you can
-- Use examples from the context when relevant
-- Keep the answer focused and avoid unnecessary elaboration
-- If no context is provided, give a general but accurate answer
-- Never say "The context provided does not contain enough information to answer the question" or something similar.
-- Format your response in plain text without special formatting
-- Make sure to provide your sources in (author last name) or something similar of the best of your ability.
+- Provide a clear, comprehensive answer based on the context provided
+- When referencing specific information, include proper in-text citations using the format (Author, Year) or (DocumentName) if no author is available
+- If the context contains partial information, clearly distinguish between what the sources say and any general knowledge you might add
+- Use examples from the context when relevant and cite them appropriately
+- If the context doesn't contain enough information, acknowledge this and explain what additional information would be helpful
+- Be specific about which sources support which claims
+- If multiple sources provide different information, acknowledge the differences and cite each source
+- Format your response in clear, readable text with proper citations
+- End your response with a "Sources" section listing all referenced materials
 
 ## Answer`
 

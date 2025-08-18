@@ -189,4 +189,27 @@ export default class LibrariesController {
       })
     }
   }
+
+  async getLibraryItemStatus({ request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const libraryItemId = request.param('id')
+
+      const libraryItem = await this.libraryService.getLibraryItemById(user.id, libraryItemId)
+      
+      return response.json({
+        vectorStatus: libraryItem.vectorStatus,
+        processingStatus: libraryItem.processingStatus,
+        vectorUpdatedAt: libraryItem.vectorUpdatedAt,
+        updatedAt: libraryItem.updatedAt,
+      })
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Library item not found' })
+      }
+      return response.internalServerError({
+        message: 'Failed to get library item status',
+      })
+    }
+  }
 }

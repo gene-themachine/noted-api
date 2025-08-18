@@ -462,7 +462,13 @@ export default class AIService {
   private async generateFreeResponseWithAI(
     contentSources: string[],
     setName: string
-  ): Promise<Array<{ question: string; answer: string }>> {
+  ): Promise<
+    Array<{
+      question: string
+      answer: string
+      rubric: Array<{ criterion: string; points: number }>
+    }>
+  > {
     console.log(`🤖 Generating free response questions using AI for set: '${setName}'`)
 
     // Combine all content sources
@@ -581,7 +587,11 @@ export default class AIService {
   }
 
   private async saveFreeResponseSetToDatabase(
-    questions: Array<{ question: string; answer: string }>,
+    questions: Array<{
+      question: string
+      answer: string
+      rubric: Array<{ criterion: string; points: number }>
+    }>,
     freeResponseSetId: string
   ): Promise<boolean> {
     if (questions.length === 0) {
@@ -597,24 +607,43 @@ export default class AIService {
 
     try {
       // Prepare question records
-      const questionRecords = questions.map((question) => ({
-        id: uuidv4(),
-        free_response_set_id: freeResponseSetId,
-        question: question.question,
-        answer: question.answer,
-        created_at: DateTime.utc().toSQL(),
-        updated_at: DateTime.utc().toSQL(),
-      }))
+      const now = DateTime.utc()
+      const questionRecords = questions.map((question, index) => {
+        // Validate rubric data
+        const rubric = Array.isArray(question.rubric) ? question.rubric : []
+        console.log(`Question ${index + 1} rubric:`, rubric)
+
+        return {
+          id: uuidv4(),
+          free_response_set_id: freeResponseSetId,
+          question: question.question,
+          answer: question.answer,
+          rubric: JSON.stringify(rubric),
+          created_at: now.toSQL(),
+          updated_at: now.toSQL(),
+        }
+      })
 
       // Insert questions
       await trx.table('free_responses').insert(questionRecords)
       console.log(`✅ Successfully inserted ${questionRecords.length} free response questions`)
 
       await trx.commit()
+      console.log('✅ Transaction committed successfully')
       return true
     } catch (error) {
-      await trx.rollback()
-      console.error(`❌ Error saving free response questions to database: ${error}`)
+      console.error('❌ Error saving free response questions to database:', error)
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+      })
+      try {
+        await trx.rollback()
+        console.log('✅ Transaction rolled back')
+      } catch (rollbackError) {
+        console.error('❌ Error during rollback:', rollbackError)
+      }
       throw error
     }
   }

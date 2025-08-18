@@ -47,6 +47,19 @@ export class MultipleChoiceService {
   }
 
   /**
+   * Update a multiple choice set
+   */
+  async updateMultipleChoiceSet(userId: string, setId: string, payload: { name: string }) {
+    const multipleChoiceSet = await this.getMultipleChoiceSet(userId, setId)
+
+    // Update the set name
+    multipleChoiceSet.name = payload.name
+    await multipleChoiceSet.save()
+
+    return multipleChoiceSet
+  }
+
+  /**
    * Delete a multiple choice set and all its questions
    */
   async deleteMultipleChoiceSet(userId: string, setId: string) {

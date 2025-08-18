@@ -48,6 +48,19 @@ export class FlashcardService {
   }
 
   /**
+   * Update a flashcard set
+   */
+  async updateFlashcardSet(userId: string, setId: string, payload: { name: string }) {
+    const flashcardSet = await this.getFlashcardSet(userId, setId)
+
+    // Update the set name
+    flashcardSet.name = payload.name
+    await flashcardSet.save()
+
+    return flashcardSet
+  }
+
+  /**
    * Delete a flashcard set and all its flashcards
    */
   async deleteFlashcardSet(userId: string, setId: string) {

@@ -47,4 +47,37 @@ export default await Env.create(new URL('../', import.meta.url), {
   NOTED_AWS_SECRET_ACCESS_KEY: Env.schema.string(),
   NOTED_AWS_REGION: Env.schema.string(),
   S3_BUCKET_NAME: Env.schema.string(),
+
+  /*
+  |----------------------------------------------------------
+  | Variables for configuring AI services (OpenAI + LangChain)
+  |----------------------------------------------------------
+  */
+  OPENAI_API_KEY: Env.schema.string(),
+  DEFAULT_AI_MODEL: Env.schema.string.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | Variables for configuring Pinecone vector database
+  |----------------------------------------------------------
+  */
+  PINECONE_API_KEY: Env.schema.string(),
+  PINECONE_INDEX: Env.schema.string(),
+  PINECONE_ENVIRONMENT: Env.schema.string.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | Variables for configuring RAG system
+  |----------------------------------------------------------
+  */
+  EMBEDDING_MODEL: Env.schema.string.optional(),
+  VECTOR_CHUNK_SIZE: Env.schema.number.optional(),
+  VECTOR_CHUNK_OVERLAP: Env.schema.number.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | Variables for debugging and development
+  |----------------------------------------------------------
+  */
+  DEBUG_VERBOSE: Env.schema.boolean.optional(),
 })

@@ -2,6 +2,9 @@ import FreeResponseSet from '#models/free_response_set'
 import FreeResponse from '#models/free_response'
 import FreeResponseEvaluation from '#models/free_response_evaluation'
 import AuthorizationService from '#services/authorization_service'
+import { getCompletion } from '../utils/openai.js'
+import { createFreeResponseEvaluationPrompt } from '../prompts/free_response.js'
+import { extractJsonFromResponse } from '../prompts/shared.js'
 
 export class FreeResponseService {
   private authService: AuthorizationService
@@ -48,6 +51,19 @@ export class FreeResponseService {
   }
 
   /**
+   * Update a free response set
+   */
+  async updateFreeResponseSet(userId: string, setId: string, payload: { name: string }) {
+    const freeResponseSet = await this.getFreeResponseSet(userId, setId)
+
+    // Update the set name
+    freeResponseSet.name = payload.name
+    await freeResponseSet.save()
+
+    return freeResponseSet
+  }
+
+  /**
    * Delete a free response set and all its questions
    */
   async deleteFreeResponseSet(userId: string, setId: string) {
@@ -88,35 +104,91 @@ export class FreeResponseService {
       throw new Error('Access denied to this free response set')
     }
 
-    // TODO: Implement AI evaluation logic here
-    // For now, we'll create a basic evaluation
-    const evaluation = await this.createBasicEvaluation(
+    // Use AI to evaluate the response against the rubric
+    const evaluation = await this.createAIEvaluation(
       freeResponseId,
       userId,
       userAnswer,
-      freeResponse.answer
+      freeResponse.question,
+      freeResponse.answer,
+      freeResponse.rubric || []
     )
 
     return evaluation
   }
 
   /**
-   * Create a basic evaluation (placeholder for AI implementation)
+   * Create an AI-powered evaluation using the rubric
    */
-  private async createBasicEvaluation(
+  private async createAIEvaluation(
+    freeResponseId: string,
+    userId: string,
+    userAnswer: string,
+    question: string,
+    expectedAnswer: string,
+    rubric: Array<{ criterion: string; points: number }>
+  ) {
+    try {
+      // If no rubric is provided, fall back to basic evaluation
+      if (!rubric || rubric.length === 0) {
+        return await this.createFallbackEvaluation(freeResponseId, userId, userAnswer, expectedAnswer)
+      }
+
+      // Create AI evaluation prompt
+      const prompt = createFreeResponseEvaluationPrompt(question, expectedAnswer, userAnswer, rubric)
+      
+      // Get AI evaluation
+      const response = await getCompletion(prompt, 'gpt-4o')
+      const aiEvaluation = extractJsonFromResponse(response)
+
+      if (!aiEvaluation) {
+        console.error('Failed to parse AI evaluation response')
+        return await this.createFallbackEvaluation(freeResponseId, userId, userAnswer, expectedAnswer)
+      }
+
+      // Create evaluation record with AI results
+      const evaluation = await FreeResponseEvaluation.create({
+        freeResponseId,
+        userId,
+        userAnswer,
+        score: aiEvaluation.percentage || aiEvaluation.totalScore || 0,
+        isCorrect: aiEvaluation.isCorrect || aiEvaluation.percentage >= 70,
+        feedback: aiEvaluation.overallFeedback || null,
+        keyPoints: aiEvaluation.keyStrengths || [],
+        improvements: aiEvaluation.areasForImprovement || [],
+        criteriaScores: aiEvaluation.criteriaScores || [],
+        overallFeedback: aiEvaluation.overallFeedback || null,
+        keyStrengths: aiEvaluation.keyStrengths || [],
+        areasForImprovement: aiEvaluation.areasForImprovement || []
+      })
+
+      console.log(`✅ AI evaluation completed: ${evaluation.score}% (${evaluation.isCorrect ? 'Correct' : 'Needs improvement'})`)
+      return evaluation
+
+    } catch (error) {
+      console.error('Error in AI evaluation:', error)
+      // Fall back to basic evaluation if AI fails
+      return await this.createFallbackEvaluation(freeResponseId, userId, userAnswer, expectedAnswer)
+    }
+  }
+
+  /**
+   * Fallback evaluation when AI is not available or fails
+   */
+  private async createFallbackEvaluation(
     freeResponseId: string,
     userId: string,
     userAnswer: string,
     expectedAnswer: string
   ) {
-    // Basic keyword matching for now - will be replaced with AI
+    // Basic keyword matching as fallback
     const userWords = userAnswer.toLowerCase().split(/\s+/)
     const expectedWords = expectedAnswer.toLowerCase().split(/\s+/)
     const matchingWords = userWords.filter(word => expectedWords.includes(word))
     
     const score = Math.min(100, Math.round((matchingWords.length / expectedWords.length) * 100))
-    const isCorrect = score >= 70 // Consider 70+ as correct
-    
+    const isCorrect = score >= 70
+
     const evaluation = await FreeResponseEvaluation.create({
       freeResponseId,
       userId,
@@ -127,7 +199,13 @@ export class FreeResponseService {
         ? 'Good answer! Your response covers the key points.'
         : 'Your answer could be improved. Try to include more specific details.',
       keyPoints: isCorrect ? ['Covers main concepts'] : [],
-      improvements: isCorrect ? [] : ['Add more specific details', 'Include key terminology']
+      improvements: isCorrect ? [] : ['Add more specific details', 'Include key terminology'],
+      criteriaScores: [],
+      overallFeedback: isCorrect 
+        ? 'Good answer! Your response covers the key points.'
+        : 'Your answer could be improved. Try to include more specific details.',
+      keyStrengths: isCorrect ? ['Shows understanding of main concepts'] : [],
+      areasForImprovement: isCorrect ? [] : ['Add more specific details', 'Include key terminology']
     })
 
     return evaluation

@@ -47,6 +47,47 @@ export default class NoteService {
   }
 
   /**
+   * Get or create a system note for library items within a project.
+   * This ensures library items have a valid note_id for vector_chunks foreign key constraint.
+   */
+  async getOrCreateLibrarySystemNote(projectId: string, userId: string): Promise<Note> {
+    const systemNoteName = '__LIBRARY_ITEMS_SYSTEM__'
+    
+    // Try to find existing system note for this project
+    let systemNote = await Note.query()
+      .where('projectId', projectId)
+      .where('userId', userId)
+      .where('name', systemNoteName)
+      .first()
+
+    if (!systemNote) {
+      // Create system note for library items
+      systemNote = await Note.create({
+        userId: userId,
+        projectId: projectId,
+        name: systemNoteName,
+        content: 'System note for library items. This note is used internally to maintain database referential integrity for standalone library items that haven\'t been attached to specific notes yet.',
+      })
+
+      // Create default study options for system note
+      await StudyOptions.create({
+        noteId: systemNote.id,
+        flashcard: null,
+        blurtItOut: null,
+        multipleChoice: null,
+        fillInTheBlank: null,
+        matching: null,
+        shortAnswer: null,
+        essay: null,
+      })
+
+      console.log(`📝 Created system note for library items in project ${projectId}`)
+    }
+
+    return systemNote
+  }
+
+  /**
    * Create a new note with default study options
    */
   async createNote(data: CreateNoteData): Promise<{ note: Note; treeNode: any; project: any }> {
@@ -216,7 +257,13 @@ export default class NoteService {
       throw new Error('Library item is not associated with this note')
     }
 
+    // Remove association (sets noteId to null)
     await libraryItem.merge({ noteId: null }).save()
+
+    console.log(`🔄 Document detached from note: library item ${libraryItemId} removed from note ${noteId}`)
+    
+    // The LibraryItem model's afterSave hook will trigger metadata update
+    // to move vectors back to system note when noteId changes to null
   }
 
   /**

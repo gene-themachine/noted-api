@@ -19,6 +19,12 @@ export default class FreeResponseController {
     })
   )
 
+  static updateFreeResponseSetValidator = vine.compile(
+    vine.object({
+      name: vine.string().trim().minLength(1),
+    })
+  )
+
   static evaluateResponseValidator = vine.compile(
     vine.object({
       userAnswer: vine.string().trim().minLength(1),
@@ -188,6 +194,45 @@ export default class FreeResponseController {
     }
   }
 
+  async updateProjectFreeResponseSet({ params, request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { setId } = params
+      const payload = await request.validateUsing(
+        FreeResponseController.updateFreeResponseSetValidator
+      )
+
+      const updatedFreeResponseSet = await this.freeResponseService.updateFreeResponseSet(
+        user.id,
+        setId,
+        payload
+      )
+
+      return response.ok({
+        message: 'Free response set updated successfully',
+        data: updatedFreeResponseSet,
+      })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+
+      if (error.message === 'Free response set not found or access denied') {
+        return response.notFound({
+          message: 'Free response set not found or you do not have access to it',
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to update free response set',
+        error: error.message,
+      })
+    }
+  }
+
   async deleteProjectFreeResponseSet({ params, response, auth }: HttpContext) {
     try {
       const user = await auth.authenticate()
@@ -225,9 +270,11 @@ export default class FreeResponseController {
         payload.userAnswer
       )
 
+      console.log('🔍 Evaluation data being returned:', JSON.stringify(evaluation.serialize(), null, 2))
+      
       return response.ok({
         message: 'Response evaluated successfully',
-        data: evaluation,
+        data: evaluation.serialize(),
       })
     } catch (error) {
       if (error.message === 'Free response question not found' || 

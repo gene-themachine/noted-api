@@ -21,6 +21,12 @@ export default class FlashcardController {
     })
   )
 
+  static updateFlashcardSetValidator = vine.compile(
+    vine.object({
+      name: vine.string().trim().minLength(1),
+    })
+  )
+
   // Project-level flashcard set methods
   async getProjectFlashcardSets({ params, response, auth }: HttpContext) {
     try {
@@ -168,6 +174,43 @@ export default class FlashcardController {
       }
       return response.internalServerError({
         message: 'Failed to retrieve flashcard set',
+        error: error.message,
+      })
+    }
+  }
+
+  async updateProjectFlashcardSet({ params, request, response, auth }: HttpContext) {
+    try {
+      const user = await auth.authenticate()
+      const { setId } = params
+      const payload = await request.validateUsing(FlashcardController.updateFlashcardSetValidator)
+
+      const updatedFlashcardSet = await this.flashcardService.updateFlashcardSet(
+        user.id,
+        setId,
+        payload
+      )
+
+      return response.ok({
+        message: 'Flashcard set updated successfully',
+        data: updatedFlashcardSet,
+      })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+
+      if (error.message === 'Flashcard set not found or access denied') {
+        return response.notFound({
+          message: 'Flashcard set not found or you do not have access to it',
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to update flashcard set',
         error: error.message,
       })
     }

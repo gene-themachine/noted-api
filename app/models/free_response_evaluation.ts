@@ -26,33 +26,66 @@ export default class FreeResponseEvaluation extends BaseModel {
   @column()
   declare feedback: string | null
 
-  @column({
+  @column({ 
     serialize: (value) => {
-      if (typeof value === 'string') {
-        try {
-          return JSON.parse(value)
-        } catch {
-          return []
-        }
-      }
-      return value || []
-    },
+      if (!value || value === '') return []
+      if (typeof value === 'string') return JSON.parse(value)
+      return value
+    }, 
+    prepare: (value) => JSON.stringify(value || []) 
   })
   declare keyPoints: string[]
 
-  @column({
+  @column({ 
     serialize: (value) => {
-      if (typeof value === 'string') {
-        try {
-          return JSON.parse(value)
-        } catch {
-          return []
-        }
-      }
-      return value || []
-    },
+      if (!value || value === '') return []
+      if (typeof value === 'string') return JSON.parse(value)
+      return value
+    }, 
+    prepare: (value) => JSON.stringify(value || []) 
   })
   declare improvements: string[]
+
+  @column({
+    columnName: 'criteria_scores',
+    serialize: (value) => {
+      if (!value || value === '') return []
+      if (typeof value === 'string') return JSON.parse(value)
+      return value
+    }, 
+    prepare: (value) => JSON.stringify(value || [])
+  })
+  declare criteriaScores: Array<{
+    criterion: string
+    pointsEarned: number
+    pointsPossible: number
+    feedback: string
+  }>
+
+  @column({ columnName: 'overall_feedback' })
+  declare overallFeedback: string | null
+
+  @column({
+    columnName: 'key_strengths',
+    serialize: (value) => {
+      if (!value || value === '') return []
+      if (typeof value === 'string') return JSON.parse(value)
+      return value
+    }, 
+    prepare: (value) => JSON.stringify(value || [])
+  })
+  declare keyStrengths: string[]
+
+  @column({
+    columnName: 'areas_for_improvement',
+    serialize: (value) => {
+      if (!value || value === '') return []
+      if (typeof value === 'string') return JSON.parse(value)
+      return value
+    }, 
+    prepare: (value) => JSON.stringify(value || [])
+  })
+  declare areasForImprovement: string[]
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime

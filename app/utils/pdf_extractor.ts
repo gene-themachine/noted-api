@@ -4,6 +4,8 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import env from '#start/env'
 import { Readable } from 'node:stream'
 
+// Note: Legacy build is compatible with Node.js without browser dependencies
+
 let s3Client: S3Client | null = null
 
 function getS3Client(): S3Client {
@@ -29,26 +31,45 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
 
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
-    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) })
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      // Minimal configuration for ES5 build text extraction
+      disableFontFace: true,
+      useSystemFonts: false,
+    })
     const pdfDocument = await loadingTask.promise
 
-    console.log(`📖 PDF has ${pdfDocument.numPages} pages`)
+    // Only log page count if verbose debugging is enabled
+    const isVerbose = env.get('DEBUG_VERBOSE', false)
+    if (isVerbose) {
+      console.log(`📖 PDF has ${pdfDocument.numPages} pages`)
+    }
 
     let fullText = ''
 
     for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-      const page = await pdfDocument.getPage(pageNum)
-      const textContent = await page.getTextContent()
+      try {
+        const page = await pdfDocument.getPage(pageNum)
+        const textContent = await page.getTextContent()
 
-      const pageText = textContent.items.map((item: any) => item.str).join(' ')
+        const pageText = textContent.items
+          .filter((item: any) => item.str && item.str.trim().length > 0)
+          .map((item: any) => item.str)
+          .join(' ')
 
-      fullText += pageText + '\n'
+        if (pageText.trim()) {
+          fullText += pageText + '\n'
+        }
+      } catch (pageError) {
+        console.warn(`⚠️ Error extracting text from page ${pageNum}: ${pageError.message}`)
+        // Continue with other pages
+      }
     }
 
     return fullText
   } catch (error) {
-    console.error('❌ Error parsing PDF with pdfjs:', error)
-    throw error
+    console.error('❌ Error parsing PDF with pdfjs:', error.message)
+    throw new Error(`PDF parsing failed: ${error.message}`)
   }
 }
 

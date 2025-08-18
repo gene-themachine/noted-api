@@ -1,6 +1,6 @@
 import { HttpContext } from '@adonisjs/core/http'
 import vine from '@vinejs/vine'
-import QAService from '#services/qa_service'
+import NativeQAService from '#services/native_qa_service'
 
 const generateQAValidator = vine.compile(
   vine.object({
@@ -10,10 +10,10 @@ const generateQAValidator = vine.compile(
 )
 
 export default class QAController {
-  private qaService: QAService
+  private qaService: NativeQAService
 
   constructor() {
-    this.qaService = new QAService()
+    this.qaService = new NativeQAService()
   }
 
   /**
@@ -253,6 +253,7 @@ export default class QAController {
     })
 
     let accumulatedAnswer = ''
+    const startTime = Date.now()
 
     try {
       console.log(`🔄 Starting streaming Q&A for block: ${qaBlockId}`)
@@ -264,11 +265,8 @@ export default class QAController {
           data: { status: 'started', qaBlockId },
         })}\n\n`
       )
-      // Force immediate send (AdonisJS doesn't have flush, data sends immediately)
 
-      console.log('🔄 About to call qaService.generateQAStreaming...')
-
-      const result = await this.qaService.generateQAStreaming(
+      await this.qaService.generateQAStreaming(
         {
           noteId,
           userId,
@@ -276,12 +274,6 @@ export default class QAController {
           question,
         },
         (chunk: string, isComplete: boolean) => {
-          console.log(`📨 Controller received chunk callback:`, {
-            chunk: chunk.substring(0, 50) + (chunk.length > 50 ? '...' : ''),
-            isComplete,
-            currentAccumulated: accumulatedAnswer.length,
-          })
-
           if (chunk) {
             accumulatedAnswer += chunk
             // Send chunk to client
@@ -295,8 +287,6 @@ export default class QAController {
                 },
               })}\n\n`
             )
-            // Data is sent immediately with AdonisJS writeHead/write
-            console.log(`📤 Sent chunk to client (total: ${accumulatedAnswer.length} chars)`)
           }
 
           if (isComplete) {
@@ -312,13 +302,14 @@ export default class QAController {
             )
             // Completion message sent immediately
 
-            console.log(`✅ Streaming Q&A completed for block: ${qaBlockId}`)
+            const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+            console.log(`✅ Q&A completed for block: ${qaBlockId} - Response: ${accumulatedAnswer.length} chars (${duration}s)`)
             response.response.end()
           }
         }
       )
 
-      console.log('✅ qaService.generateQAStreaming completed with result:', result)
+      // Final result logged above with summary
     } catch (error) {
       console.error('❌ Streaming Q&A error:', error)
 

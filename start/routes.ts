@@ -84,6 +84,7 @@ router
       'createProjectFlashcardSet',
     ])
     router.get('/study-sets/flashcards/:setId', [FlashcardController, 'getFlashcardSet'])
+    router.put('/study-sets/flashcards/:setId', [FlashcardController, 'updateProjectFlashcardSet'])
     router.delete('/study-sets/flashcards/:setId', [FlashcardController, 'deleteFlashcardSet'])
 
     // Starred flashcards routes
@@ -127,6 +128,10 @@ router
       MultipleChoiceController,
       'getProjectMultipleChoiceSet',
     ])
+    router.put('/study-sets/multiple-choice/:setId', [
+      MultipleChoiceController,
+      'updateProjectMultipleChoiceSet',
+    ])
     router.delete('/study-sets/multiple-choice/:setId', [
       MultipleChoiceController,
       'deleteProjectMultipleChoiceSet',
@@ -144,6 +149,10 @@ router
     router.get('/study-sets/free-response/:setId', [
       FreeResponseController,
       'getProjectFreeResponseSet',
+    ])
+    router.put('/study-sets/free-response/:setId', [
+      FreeResponseController,
+      'updateProjectFreeResponseSet',
     ])
     router.delete('/study-sets/free-response/:setId', [
       FreeResponseController,
@@ -167,6 +176,7 @@ router
     router.get('/libraries/projects/:projectId', [LibrariesController, 'getProjectLibraryItems'])
     router.get('/libraries/:id', [LibrariesController, 'getLibraryItemById'])
     router.get('/libraries/:id/view', [LibrariesController, 'getLibraryItemViewUrl'])
+    router.get('/libraries/:id/status', [LibrariesController, 'getLibraryItemStatus'])
     router.put('/libraries/:id/toggle-global', [LibrariesController, 'toggleGlobalStatus'])
 
     // Notification routes

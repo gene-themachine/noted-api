@@ -16,6 +16,19 @@ export default class FreeResponse extends BaseModel {
   @column()
   declare answer: string
 
+  @column({ 
+    serialize: (value) => {
+      if (!value || value === '') return []
+      if (typeof value === 'string') return JSON.parse(value)
+      return value
+    }, 
+    prepare: (value) => JSON.stringify(value || []) 
+  })
+  declare rubric: Array<{
+    criterion: string
+    points: number
+  }>
+
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 
