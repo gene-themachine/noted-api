@@ -30,7 +30,8 @@
     "#database/*": "./database/*.js",
     "#start/*": "./start/*.js",
     "#tests/*": "./tests/*.js",
-    "#config/*": "./config/*.js"
+    "#config/*": "./config/*.js",
+    "#utils/*": "./app/utils/*.js"
   },
   "devDependencies": {
     "@adonisjs/assembler": "^7.8.2",
@@ -62,6 +63,7 @@
     "@pinecone-database/pinecone": "^6.1.2",
     "@vinejs/vine": "^3.0.1",
     "luxon": "^3.6.1",
+    "jose": "^5.2.4",
     "openai": "^5.12.2",
     "pdfjs-dist": "^5.4.54",
     "pg": "^8.16.3",

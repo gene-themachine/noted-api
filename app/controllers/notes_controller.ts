@@ -36,9 +36,12 @@ export default class NotesController {
   )
 
   // Create a new note
-  async createNote({ request, response, auth }: HttpContext) {
+  async createNote({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) {
+        throw new Error('Unauthorized')
+      }
       const payload = await request.validateUsing(NotesController.createValidator)
 
       const result = await this.noteService.createNote({
@@ -46,7 +49,7 @@ export default class NotesController {
         name: payload.name,
         content: payload.content,
         folderPath: payload.folderPath,
-        userId: user.id,
+        userId,
       })
 
       return response.created({
@@ -78,13 +81,14 @@ export default class NotesController {
   }
 
   // Create a new folder
-  async createFolder({ request, response, auth }: HttpContext) {
+  async createFolder({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const payload = await request.validateUsing(NotesController.createFolderValidator)
 
       const result = await this.noteService.createFolder(
-        user.id,
+        userId,
         payload.projectId,
         payload.name,
         payload.folderPath
@@ -110,12 +114,13 @@ export default class NotesController {
   }
 
   // Get project folder tree
-  async getProjectTree({ request, response, auth }: HttpContext) {
+  async getProjectTree({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const projectId = request.param('projectId')
 
-      const project = await this.noteService.getProjectTree(user.id, projectId)
+      const project = await this.noteService.getProjectTree(userId, projectId)
 
       return response.ok({
         message: 'Project tree retrieved successfully',
@@ -129,12 +134,13 @@ export default class NotesController {
   }
 
   // Get a single note by its ID
-  async getNoteById({ request, response, auth }: HttpContext) {
+  async getNoteById({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const noteId = request.param('noteId')
 
-      const note = await this.noteService.getNoteById(user.id, noteId)
+      const note = await this.noteService.getNoteById(userId, noteId)
 
       return response.ok({
         message: 'Note retrieved successfully',
@@ -153,12 +159,13 @@ export default class NotesController {
   }
 
   // Get study options for a note
-  async getStudyOptions({ request, response, auth }: HttpContext) {
+  async getStudyOptions({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const noteId = request.param('noteId')
 
-      const studyOptions = await this.noteService.getStudyOptions(user.id, noteId)
+      const studyOptions = await this.noteService.getStudyOptions(userId, noteId)
 
       return response.ok(studyOptions)
     } catch (error) {
@@ -190,13 +197,14 @@ export default class NotesController {
   )
 
   // Update study options for a note
-  async updateStudyOptions({ request, response, auth }: HttpContext) {
+  async updateStudyOptions({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const noteId = request.param('noteId')
       const payload = await request.validateUsing(NotesController.updateStudyOptionsValidator)
 
-      const studyOptions = await this.noteService.updateStudyOptions(user.id, noteId, payload)
+      const studyOptions = await this.noteService.updateStudyOptions(userId, noteId, payload)
 
       return response.ok(studyOptions)
     } catch (error) {
@@ -225,13 +233,14 @@ export default class NotesController {
   )
 
   // Update a note by its ID
-  async updateNote({ request, response, auth }: HttpContext) {
+  async updateNote({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const noteId = request.param('noteId')
       const payload = await request.validateUsing(NotesController.updateValidator)
 
-      const note = await this.noteService.updateNote(user.id, noteId, payload)
+      const note = await this.noteService.updateNote(userId, noteId, payload)
 
       return response.ok({
         message: 'Note updated successfully',
@@ -257,12 +266,13 @@ export default class NotesController {
   }
 
   // Delete a note by its ID
-  async deleteNote({ request, response, auth }: HttpContext) {
+  async deleteNote({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const noteId = request.param('noteId')
 
-      await this.noteService.deleteNote(user.id, noteId)
+      await this.noteService.deleteNote(userId, noteId)
 
       return response.ok({
         message: 'Note deleted successfully',
@@ -279,12 +289,13 @@ export default class NotesController {
     }
   }
 
-  async deleteFolder({ request, response, auth }: HttpContext) {
+  async deleteFolder({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const { projectId, folderId } = request.params()
 
-      await this.noteService.deleteFolder(user.id, projectId, folderId)
+      await this.noteService.deleteFolder(userId, projectId, folderId)
 
       return response.ok({ message: 'Folder deleted successfully.' })
     } catch (error) {
@@ -301,12 +312,13 @@ export default class NotesController {
     }
   }
 
-  async addLibraryItemToNote({ request, response, auth }: HttpContext) {
+  async addLibraryItemToNote({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const { noteId, libraryItemId } = request.params()
 
-      await this.noteService.addLibraryItemToNote(user.id, noteId, libraryItemId)
+      await this.noteService.addLibraryItemToNote(userId, noteId, libraryItemId)
 
       return response.ok({ message: 'Library item added to note successfully.' })
     } catch (error) {
@@ -320,12 +332,13 @@ export default class NotesController {
     }
   }
 
-  async removeLibraryItemFromNote({ request, response, auth }: HttpContext) {
+  async removeLibraryItemFromNote({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId || undefined
+      if (!userId) throw new Error('Unauthorized')
       const { noteId, libraryItemId } = request.params()
 
-      await this.noteService.removeLibraryItemFromNote(user.id, noteId, libraryItemId)
+      await this.noteService.removeLibraryItemFromNote(userId, noteId, libraryItemId)
 
       return response.ok({ message: 'Library item removed from note successfully.' })
     } catch (error) {

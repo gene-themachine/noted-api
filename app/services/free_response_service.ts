@@ -73,7 +73,7 @@ export class FreeResponseService {
     const freeResponseIds = await FreeResponse.query()
       .where('free_response_set_id', setId)
       .select('id')
-    
+
     for (const response of freeResponseIds) {
       await FreeResponseEvaluation.query().where('free_response_id', response.id).delete()
     }
@@ -131,19 +131,34 @@ export class FreeResponseService {
     try {
       // If no rubric is provided, fall back to basic evaluation
       if (!rubric || rubric.length === 0) {
-        return await this.createFallbackEvaluation(freeResponseId, userId, userAnswer, expectedAnswer)
+        return await this.createFallbackEvaluation(
+          freeResponseId,
+          userId,
+          userAnswer,
+          expectedAnswer
+        )
       }
 
       // Create AI evaluation prompt
-      const prompt = createFreeResponseEvaluationPrompt(question, expectedAnswer, userAnswer, rubric)
-      
+      const prompt = createFreeResponseEvaluationPrompt(
+        question,
+        expectedAnswer,
+        userAnswer,
+        rubric
+      )
+
       // Get AI evaluation
       const response = await getCompletion(prompt, 'gpt-4o')
       const aiEvaluation = extractJsonFromResponse(response)
 
       if (!aiEvaluation) {
         console.error('Failed to parse AI evaluation response')
-        return await this.createFallbackEvaluation(freeResponseId, userId, userAnswer, expectedAnswer)
+        return await this.createFallbackEvaluation(
+          freeResponseId,
+          userId,
+          userAnswer,
+          expectedAnswer
+        )
       }
 
       // Create evaluation record with AI results
@@ -159,12 +174,13 @@ export class FreeResponseService {
         criteriaScores: aiEvaluation.criteriaScores || [],
         overallFeedback: aiEvaluation.overallFeedback || null,
         keyStrengths: aiEvaluation.keyStrengths || [],
-        areasForImprovement: aiEvaluation.areasForImprovement || []
+        areasForImprovement: aiEvaluation.areasForImprovement || [],
       })
 
-      console.log(`✅ AI evaluation completed: ${evaluation.score}% (${evaluation.isCorrect ? 'Correct' : 'Needs improvement'})`)
+      console.log(
+        `✅ AI evaluation completed: ${evaluation.score}% (${evaluation.isCorrect ? 'Correct' : 'Needs improvement'})`
+      )
       return evaluation
-
     } catch (error) {
       console.error('Error in AI evaluation:', error)
       // Fall back to basic evaluation if AI fails
@@ -184,8 +200,8 @@ export class FreeResponseService {
     // Basic keyword matching as fallback
     const userWords = userAnswer.toLowerCase().split(/\s+/)
     const expectedWords = expectedAnswer.toLowerCase().split(/\s+/)
-    const matchingWords = userWords.filter(word => expectedWords.includes(word))
-    
+    const matchingWords = userWords.filter((word) => expectedWords.includes(word))
+
     const score = Math.min(100, Math.round((matchingWords.length / expectedWords.length) * 100))
     const isCorrect = score >= 70
 
@@ -195,17 +211,19 @@ export class FreeResponseService {
       userAnswer,
       score,
       isCorrect,
-      feedback: isCorrect 
+      feedback: isCorrect
         ? 'Good answer! Your response covers the key points.'
         : 'Your answer could be improved. Try to include more specific details.',
       keyPoints: isCorrect ? ['Covers main concepts'] : [],
       improvements: isCorrect ? [] : ['Add more specific details', 'Include key terminology'],
       criteriaScores: [],
-      overallFeedback: isCorrect 
+      overallFeedback: isCorrect
         ? 'Good answer! Your response covers the key points.'
         : 'Your answer could be improved. Try to include more specific details.',
       keyStrengths: isCorrect ? ['Shows understanding of main concepts'] : [],
-      areasForImprovement: isCorrect ? [] : ['Add more specific details', 'Include key terminology']
+      areasForImprovement: isCorrect
+        ? []
+        : ['Add more specific details', 'Include key terminology'],
     })
 
     return evaluation

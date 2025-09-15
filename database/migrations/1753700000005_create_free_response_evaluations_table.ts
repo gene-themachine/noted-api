@@ -6,7 +6,12 @@ export default class extends BaseSchema {
   async up() {
     this.schema.createTable(this.tableName, (table) => {
       table.uuid('id').primary().defaultTo(this.db.rawQuery('gen_random_uuid()').knexQuery)
-      table.uuid('free_response_id').notNullable().references('id').inTable('free_responses').onDelete('CASCADE')
+      table
+        .uuid('free_response_id')
+        .notNullable()
+        .references('id')
+        .inTable('free_responses')
+        .onDelete('CASCADE')
       table.uuid('user_id').notNullable().references('id').inTable('users').onDelete('CASCADE')
       table.text('user_answer').notNullable()
       table.integer('score').notNullable() // 0-100

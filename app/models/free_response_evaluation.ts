@@ -26,23 +26,23 @@ export default class FreeResponseEvaluation extends BaseModel {
   @column()
   declare feedback: string | null
 
-  @column({ 
+  @column({
     serialize: (value) => {
       if (!value || value === '') return []
       if (typeof value === 'string') return JSON.parse(value)
       return value
-    }, 
-    prepare: (value) => JSON.stringify(value || []) 
+    },
+    prepare: (value) => JSON.stringify(value || []),
   })
   declare keyPoints: string[]
 
-  @column({ 
+  @column({
     serialize: (value) => {
       if (!value || value === '') return []
       if (typeof value === 'string') return JSON.parse(value)
       return value
-    }, 
-    prepare: (value) => JSON.stringify(value || []) 
+    },
+    prepare: (value) => JSON.stringify(value || []),
   })
   declare improvements: string[]
 
@@ -52,8 +52,8 @@ export default class FreeResponseEvaluation extends BaseModel {
       if (!value || value === '') return []
       if (typeof value === 'string') return JSON.parse(value)
       return value
-    }, 
-    prepare: (value) => JSON.stringify(value || [])
+    },
+    prepare: (value) => JSON.stringify(value || []),
   })
   declare criteriaScores: Array<{
     criterion: string
@@ -71,8 +71,8 @@ export default class FreeResponseEvaluation extends BaseModel {
       if (!value || value === '') return []
       if (typeof value === 'string') return JSON.parse(value)
       return value
-    }, 
-    prepare: (value) => JSON.stringify(value || [])
+    },
+    prepare: (value) => JSON.stringify(value || []),
   })
   declare keyStrengths: string[]
 
@@ -82,8 +82,8 @@ export default class FreeResponseEvaluation extends BaseModel {
       if (!value || value === '') return []
       if (typeof value === 'string') return JSON.parse(value)
       return value
-    }, 
-    prepare: (value) => JSON.stringify(value || [])
+    },
+    prepare: (value) => JSON.stringify(value || []),
   })
   declare areasForImprovement: string[]
 

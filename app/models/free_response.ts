@@ -16,13 +16,13 @@ export default class FreeResponse extends BaseModel {
   @column()
   declare answer: string
 
-  @column({ 
+  @column({
     serialize: (value) => {
       if (!value || value === '') return []
       if (typeof value === 'string') return JSON.parse(value)
       return value
-    }, 
-    prepare: (value) => JSON.stringify(value || []) 
+    },
+    prepare: (value) => JSON.stringify(value || []),
   })
   declare rubric: Array<{
     criterion: string

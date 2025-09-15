@@ -33,10 +33,7 @@ export default class NativeQAService {
       const { noteId, userId, question } = data
 
       // Verify note access
-      const note = await Note.query()
-        .where('id', noteId)
-        .where('userId', userId)
-        .first()
+      const note = await Note.query().where('id', noteId).where('userId', userId).first()
 
       if (!note) {
         return {
@@ -75,10 +72,7 @@ export default class NativeQAService {
       const { noteId, userId, question } = data
 
       // Verify note access
-      const note = await Note.query()
-        .where('id', noteId)
-        .where('userId', userId)
-        .first()
+      const note = await Note.query().where('id', noteId).where('userId', userId).first()
 
       if (!note) {
         onChunk('', true)
@@ -136,12 +130,12 @@ QUESTION: ${question}
 ANSWER:`
 
     const answer = await getCompletion(prompt)
-    
+
     // Add citations if any were found
     if (citations) {
       return `${answer}\n\n${citations}`
     }
-    
+
     return answer
   }
 
@@ -154,7 +148,8 @@ ANSWER:`
     onChunk: (chunk: string, isComplete: boolean) => void
   ): Promise<string> {
     if (searchResults.length === 0) {
-      const fallback = "I couldn't find relevant information in the documents attached to this note."
+      const fallback =
+        "I couldn't find relevant information in the documents attached to this note."
       onChunk(fallback, true)
       return fallback
     }
@@ -188,8 +183,10 @@ ANSWER:`
     }
 
     onChunk('', true)
-    
-    const fullAnswer = citations ? `${result.response.trim()}\n\n${citations}` : result.response.trim()
+
+    const fullAnswer = citations
+      ? `${result.response.trim()}\n\n${citations}`
+      : result.response.trim()
     return fullAnswer
   }
 
@@ -211,8 +208,8 @@ ANSWER:`
    */
   private generateCitations(searchResults: any[]): string {
     const citations = searchResults
-      .filter(r => r.sourceType === 'library_item' && (r.author || r.sourceFile))
-      .map(r => {
+      .filter((r) => r.sourceType === 'library_item' && (r.author || r.sourceFile))
+      .map((r) => {
         if (r.author && r.title) {
           return `- ${r.author}. "${r.title}". From: ${r.sourceFile}`
         } else if (r.sourceFile) {
@@ -226,7 +223,7 @@ ANSWER:`
     if (citations.length > 0) {
       return `**Sources:**\n${citations.join('\n')}`
     }
-    
+
     return ''
   }
 }

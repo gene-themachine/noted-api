@@ -1,6 +1,7 @@
 import { HttpContext } from '@adonisjs/core/http'
 import vine from '@vinejs/vine'
 import NativeQAService from '#services/native_qa_service'
+import IntelligentQAService from '#services/intelligent_qa_service'
 
 const generateQAValidator = vine.compile(
   vine.object({
@@ -11,16 +12,18 @@ const generateQAValidator = vine.compile(
 
 export default class QAController {
   private qaService: NativeQAService
+  private intelligentQAService: IntelligentQAService
 
   constructor() {
     this.qaService = new NativeQAService()
+    this.intelligentQAService = new IntelligentQAService()
   }
 
   /**
    * Generate an answer for a question in a note
    */
-  async generate({ auth, params, request, response }: HttpContext) {
-    const userId = auth.user!.id
+  async generate({ params, request, response }: HttpContext) {
+    const userId = (request as any)?.userId
     const { noteId } = params
     const payload = await request.validateUsing(generateQAValidator)
 
@@ -59,8 +62,8 @@ export default class QAController {
   /**
    * Stream Q&A generation using Server-Sent Events
    */
-  async stream({ auth, params, request, response }: HttpContext) {
-    const userId = auth.user!.id
+  async stream({ params, request, response }: HttpContext) {
+    const userId = (request as any)?.userId
     const { noteId } = params
     const payload = await request.validateUsing(generateQAValidator)
 
@@ -145,31 +148,11 @@ export default class QAController {
   }
 
   /**
-   * Stream Q&A generation using Server-Sent Events (with manual auth handling)
+   * Stream Q&A generation using Server-Sent Events (auth handled by middleware)
    */
-  async streamSSE({ params, request, response, auth }: HttpContext) {
-    console.log('🔄 SSE Q&A endpoint called')
-    console.log('📝 Query params:', request.qs())
-    console.log('📝 Params:', params)
-
-    // Manual authentication via query parameter
-    const authToken = request.qs().auth_token as string
-    if (!authToken) {
-      console.error('❌ No auth token provided')
-      response.response.writeHead(401, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      })
-      response.response.write(
-        `data: ${JSON.stringify({
-          type: 'error',
-          data: { error: 'Authentication token required', qaBlockId: 'unknown' },
-        })}\n\n`
-      )
-      response.response.end()
-      return
-    }
+  async streamSSE({ params, request, response }: HttpContext) {
+    const userId = (request as any)?.userId
+    const { noteId } = params
 
     // Validate request parameters from query string
     const qaBlockId = request.qs().qaBlockId as string
@@ -190,56 +173,6 @@ export default class QAController {
       response.response.end()
       return
     }
-
-    // Verify the authentication token manually
-    let userId: string
-    try {
-      console.log('🔐 Verifying auth token...')
-
-      // Set up the authorization header for the auth system
-      request.request.headers.authorization = `Bearer ${authToken}`
-
-      // Use the auth system to authenticate
-      await auth.authenticateUsing(['api'])
-      const user = auth.user
-
-      if (!user) {
-        console.error('❌ Authentication failed - no user found')
-        response.response.writeHead(401, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        })
-        response.response.write(
-          `data: ${JSON.stringify({
-            type: 'error',
-            data: { error: 'Authentication failed', qaBlockId },
-          })}\n\n`
-        )
-        response.response.end()
-        return
-      }
-
-      userId = user.id
-      console.log(`✅ Token verified for user: ${userId}`)
-    } catch (error) {
-      console.error('❌ Token verification failed:', error)
-      response.response.writeHead(401, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      })
-      response.response.write(
-        `data: ${JSON.stringify({
-          type: 'error',
-          data: { error: 'Authentication failed', qaBlockId },
-        })}\n\n`
-      )
-      response.response.end()
-      return
-    }
-
-    const { noteId } = params
 
     // Set up SSE headers with anti-buffering
     response.response.writeHead(200, {
@@ -300,16 +233,15 @@ export default class QAController {
                 },
               })}\n\n`
             )
-            // Completion message sent immediately
 
             const duration = ((Date.now() - startTime) / 1000).toFixed(1)
-            console.log(`✅ Q&A completed for block: ${qaBlockId} - Response: ${accumulatedAnswer.length} chars (${duration}s)`)
+            console.log(
+              `✅ Q&A completed for block: ${qaBlockId} - Response: ${accumulatedAnswer.length} chars (${duration}s)`
+            )
             response.response.end()
           }
         }
       )
-
-      // Final result logged above with summary
     } catch (error) {
       console.error('❌ Streaming Q&A error:', error)
 
@@ -323,7 +255,6 @@ export default class QAController {
           },
         })}\n\n`
       )
-      // Error message sent immediately
 
       response.response.end()
     }
@@ -361,6 +292,169 @@ export default class QAController {
         success: false,
         error: error.message,
       })
+    }
+  }
+
+  /**
+   * Generate an intelligent answer using intent classification and multi-pipeline routing
+   */
+  async generateIntelligent({ params, request, response }: HttpContext) {
+    const userId = (request as any)?.user?.id || (request as any)?.userId
+    const { noteId } = params
+    const payload = await request.validateUsing(generateQAValidator)
+
+    try {
+      const result = await this.intelligentQAService.generateAnswer(
+        noteId,
+        userId,
+        payload.question
+      )
+
+      return response.ok({
+        success: true,
+        data: {
+          qaBlockId: payload.qaBlockId,
+          question: payload.question,
+          answer: result.answer,
+          pipeline_used: result.pipeline_used,
+          intent_classification: result.intent_classification,
+          confidence: result.confidence,
+          sources: result.sources,
+        },
+      })
+    } catch (error) {
+      console.error('❌ Intelligent QA generation failed:', error)
+      return response.internalServerError({
+        success: false,
+        message: error.message,
+      })
+    }
+  }
+
+  /**
+   * Stream intelligent answer generation (auth handled by middleware)
+   */
+  async streamIntelligent({ params, request, response }: HttpContext) {
+    const userId = (request as any)?.userId
+    const { noteId } = params
+    const { qaBlockId, question } = request.qs()
+
+    // Validate query parameters
+    if (!qaBlockId || !question) {
+      console.error('❌ Missing required parameters:', { qaBlockId, question })
+      response.response.writeHead(400, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      })
+      response.response.write(
+        `data: ${JSON.stringify({
+          type: 'error',
+          data: {
+            error: 'Missing qaBlockId or question parameters',
+            qaBlockId: qaBlockId || 'unknown',
+          },
+        })}\n\n`
+      )
+      response.response.end()
+      return
+    }
+
+    try {
+      console.log(`🔄 Starting intelligent streaming Q&A for block: ${qaBlockId}`)
+
+      // Set up SSE (use anti-buffering headers to ensure proxies don't buffer)
+      response.response.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'Transfer-Encoding': 'chunked',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control',
+      })
+
+      // Send an initial status event quickly so clients establish the stream
+      response.response.write(
+        `data: ${JSON.stringify({
+          type: 'status',
+          data: { status: 'started', qaBlockId },
+        })}\n\n`
+      )
+
+      // Keep-alive ping to prevent timeouts while classifying or retrieving
+      const keepAlive = setInterval(() => {
+        try {
+          response.response.write(': keep-alive\n\n')
+        } catch {}
+      }, 15000)
+
+      // Generate streaming answer
+      let completed = false
+      const result = await this.intelligentQAService.generateAnswerStreaming(
+        noteId,
+        userId,
+        question,
+        (chunk: string, isComplete: boolean) => {
+          const eventData = JSON.stringify({
+            type: 'chunk',
+            data: {
+              qaBlockId,
+              question,
+              chunk,
+              isComplete,
+              timestamp: new Date().toISOString(),
+            },
+          })
+
+          response.response.write(`data: ${eventData}\n\n`)
+
+          if (isComplete) {
+            completed = true
+          }
+        }
+      )
+
+      // After the streaming service resolves, send metadata and end the stream
+      if (!completed) {
+        // If provider did not send an explicit completion chunk, ensure we close cleanly
+        response.response.write(
+          `data: ${JSON.stringify({ type: 'complete', data: { qaBlockId, question, isComplete: true } })}\n\n`
+        )
+      }
+
+      const metadataEvent = JSON.stringify({
+        type: 'metadata',
+        data: {
+          qaBlockId,
+          question,
+          pipeline_used: result?.pipeline_used,
+          intent_classification: result?.intent_classification,
+          confidence: result?.confidence,
+          sources: result?.sources,
+          isMetadata: true,
+        },
+      })
+      response.response.write(`data: ${metadataEvent}\n\n`)
+
+      clearInterval(keepAlive)
+      response.response.end()
+    } catch (error) {
+      console.error('❌ Intelligent streaming QA failed:', error)
+
+      const errorEvent = JSON.stringify({
+        qaBlockId: request.qs().qaBlockId,
+        question: request.qs().question,
+        chunk: 'An error occurred while generating your answer.',
+        isComplete: true,
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      })
+
+      try {
+        response.response.write(`data: ${errorEvent}\n\n`)
+      } catch {}
+      response.response.end()
     }
   }
 }

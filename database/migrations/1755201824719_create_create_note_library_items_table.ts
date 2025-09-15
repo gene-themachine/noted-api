@@ -6,12 +6,17 @@ export default class extends BaseSchema {
   async up() {
     this.schema.createTable(this.tableName, (table) => {
       table.increments('id').primary()
-      
+
       // Foreign key to notes table
       table.uuid('note_id').notNullable().references('id').inTable('notes').onDelete('CASCADE')
-      
-      // Foreign key to library_items table  
-      table.uuid('library_item_id').notNullable().references('id').inTable('library_items').onDelete('CASCADE')
+
+      // Foreign key to library_items table
+      table
+        .uuid('library_item_id')
+        .notNullable()
+        .references('id')
+        .inTable('library_items')
+        .onDelete('CASCADE')
 
       // Ensure unique combinations
       table.unique(['note_id', 'library_item_id'])

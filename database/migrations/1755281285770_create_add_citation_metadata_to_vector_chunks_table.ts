@@ -11,7 +11,7 @@ export default class extends BaseSchema {
       table.string('title', 500).nullable()
       table.string('year', 4).nullable()
       table.string('document_type', 50).nullable()
-      
+
       // Add indexes for better query performance
       table.index(['citation_key'])
       table.index(['author'])
@@ -26,7 +26,7 @@ export default class extends BaseSchema {
       table.dropIndex(['author'])
       table.dropIndex(['year'])
       table.dropIndex(['document_type'])
-      
+
       table.dropColumn('citation_key')
       table.dropColumn('author')
       table.dropColumn('title')

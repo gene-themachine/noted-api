@@ -6,7 +6,12 @@ export default class extends BaseSchema {
   async up() {
     this.schema.createTable(this.tableName, (table) => {
       table.increments('id')
-      table.uuid('free_response_set_id').notNullable().references('id').inTable('free_response_sets').onDelete('CASCADE')
+      table
+        .uuid('free_response_set_id')
+        .notNullable()
+        .references('id')
+        .inTable('free_response_sets')
+        .onDelete('CASCADE')
       table.uuid('note_id').notNullable().references('id').inTable('notes').onDelete('CASCADE')
 
       table.timestamp('created_at', { useTz: true }).notNullable()

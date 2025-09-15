@@ -21,7 +21,7 @@ export default class extends BaseSchema {
     this.schema.alterTable(this.tableName, (table) => {
       // Revert to original constraints (though this might cause data loss if values exceed limits)
       table.string('source_file').nullable().alter()
-      table.string('section_title').nullable().alter() 
+      table.string('section_title').nullable().alter()
       table.string('content_category').nullable().alter()
       table.string('citation_key').nullable().alter()
       table.string('author').nullable().alter()

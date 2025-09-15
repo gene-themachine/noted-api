@@ -28,9 +28,9 @@ export default class FlashcardController {
   )
 
   // Project-level flashcard set methods
-  async getProjectFlashcardSets({ params, response, auth }: HttpContext) {
+  async getProjectFlashcardSets({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
 
       const flashcardSets = await this.flashcardService.getProjectFlashcardSets(user.id, projectId)
@@ -47,9 +47,9 @@ export default class FlashcardController {
     }
   }
 
-  async createProjectFlashcardSet({ params, request, response, auth }: HttpContext) {
+  async createProjectFlashcardSet({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
       const payload = await request.validateUsing(FlashcardController.createFlashcardSetValidator)
 
@@ -155,9 +155,9 @@ export default class FlashcardController {
     }
   }
 
-  async getFlashcardSet({ params, response, auth }: HttpContext) {
+  async getFlashcardSet({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
 
       const flashcardSet = await this.flashcardService.getFlashcardSet(user.id, setId)
@@ -179,9 +179,9 @@ export default class FlashcardController {
     }
   }
 
-  async updateProjectFlashcardSet({ params, request, response, auth }: HttpContext) {
+  async updateProjectFlashcardSet({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
       const payload = await request.validateUsing(FlashcardController.updateFlashcardSetValidator)
 
@@ -216,9 +216,9 @@ export default class FlashcardController {
     }
   }
 
-  async deleteFlashcardSet({ params, response, auth }: HttpContext) {
+  async deleteFlashcardSet({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
 
       await this.flashcardService.deleteFlashcardSet(user.id, setId)
@@ -239,9 +239,9 @@ export default class FlashcardController {
     }
   }
 
-  async markFlashcardsAsNeedingUpdate({ params, response, auth }: HttpContext) {
+  async markFlashcardsAsNeedingUpdate({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { noteId } = params
 
       await this.flashcardService.markFlashcardsAsNeedingUpdate(user.id, noteId)
@@ -263,16 +263,13 @@ export default class FlashcardController {
   }
 
   // Starred flashcards methods
-  async getProjectStarredFlashcards({ params, response, auth }: HttpContext) {
+  async getProjectStarredFlashcards({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
 
       // Verify user owns the project
-      const project = await Project.query()
-        .where('id', projectId)
-        .where('user_id', user.id)
-        .first()
+      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
 
       if (!project) {
         return response.notFound({
@@ -297,16 +294,13 @@ export default class FlashcardController {
     }
   }
 
-  async starFlashcard({ params, response, auth }: HttpContext) {
+  async starFlashcard({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId, flashcardId } = params
 
       // Verify user owns the project
-      const project = await Project.query()
-        .where('id', projectId)
-        .where('user_id', user.id)
-        .first()
+      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
 
       if (!project) {
         return response.notFound({
@@ -342,16 +336,13 @@ export default class FlashcardController {
     }
   }
 
-  async unstarFlashcard({ params, response, auth }: HttpContext) {
+  async unstarFlashcard({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId, flashcardId } = params
 
       // Verify user owns the project
-      const project = await Project.query()
-        .where('id', projectId)
-        .where('user_id', user.id)
-        .first()
+      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
 
       if (!project) {
         return response.notFound({

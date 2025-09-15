@@ -33,6 +33,9 @@ new Ignitor(APP_ROOT, { importer: IMPORTER })
   .tap((app) => {
     app.booting(async () => {
       await import('#start/env')
+      // Validate environment variables after loading env
+      const { EnvironmentValidator } = await import('#utils/env_validator')
+      EnvironmentValidator.validateAndLog()
     })
     app.listen('SIGTERM', () => app.terminate())
     app.listenIf(app.managedByPm2, 'SIGINT', () => app.terminate())

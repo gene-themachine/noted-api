@@ -32,9 +32,9 @@ export default class FreeResponseController {
   )
 
   // Project-level free response set methods
-  async getProjectFreeResponseSets({ params, response, auth }: HttpContext) {
+  async getProjectFreeResponseSets({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
 
       const freeResponseSets = await this.freeResponseService.getProjectFreeResponseSets(
@@ -57,9 +57,9 @@ export default class FreeResponseController {
     }
   }
 
-  async createProjectFreeResponseSet({ params, request, response, auth }: HttpContext) {
+  async createProjectFreeResponseSet({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
       const payload = await request.validateUsing(
         FreeResponseController.createProjectFreeResponseSetValidator
@@ -167,15 +167,12 @@ export default class FreeResponseController {
     }
   }
 
-  async getProjectFreeResponseSet({ params, response, auth }: HttpContext) {
+  async getProjectFreeResponseSet({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
 
-      const freeResponseSet = await this.freeResponseService.getFreeResponseSet(
-        user.id,
-        setId
-      )
+      const freeResponseSet = await this.freeResponseService.getFreeResponseSet(user.id, setId)
 
       return response.ok({
         message: 'Free response set retrieved successfully',
@@ -194,9 +191,9 @@ export default class FreeResponseController {
     }
   }
 
-  async updateProjectFreeResponseSet({ params, request, response, auth }: HttpContext) {
+  async updateProjectFreeResponseSet({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
       const payload = await request.validateUsing(
         FreeResponseController.updateFreeResponseSetValidator
@@ -233,9 +230,9 @@ export default class FreeResponseController {
     }
   }
 
-  async deleteProjectFreeResponseSet({ params, response, auth }: HttpContext) {
+  async deleteProjectFreeResponseSet({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
 
       await this.freeResponseService.deleteFreeResponseSet(user.id, setId)
@@ -256,13 +253,11 @@ export default class FreeResponseController {
     }
   }
 
-  async evaluateUserResponse({ params, request, response, auth }: HttpContext) {
+  async evaluateUserResponse({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { questionId } = params
-      const payload = await request.validateUsing(
-        FreeResponseController.evaluateResponseValidator
-      )
+      const payload = await request.validateUsing(FreeResponseController.evaluateResponseValidator)
 
       const evaluation = await this.freeResponseService.evaluateUserResponse(
         user.id,
@@ -270,15 +265,20 @@ export default class FreeResponseController {
         payload.userAnswer
       )
 
-      console.log('🔍 Evaluation data being returned:', JSON.stringify(evaluation.serialize(), null, 2))
-      
+      console.log(
+        '🔍 Evaluation data being returned:',
+        JSON.stringify(evaluation.serialize(), null, 2)
+      )
+
       return response.ok({
         message: 'Response evaluated successfully',
         data: evaluation.serialize(),
       })
     } catch (error) {
-      if (error.message === 'Free response question not found' || 
-          error.message === 'Access denied to this free response set') {
+      if (
+        error.message === 'Free response question not found' ||
+        error.message === 'Access denied to this free response set'
+      ) {
         return response.notFound({
           message: error.message,
         })
@@ -290,15 +290,12 @@ export default class FreeResponseController {
     }
   }
 
-  async getEvaluationHistory({ params, response, auth }: HttpContext) {
+  async getEvaluationHistory({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { questionId } = params
 
-      const evaluations = await this.freeResponseService.getEvaluationHistory(
-        user.id,
-        questionId
-      )
+      const evaluations = await this.freeResponseService.getEvaluationHistory(user.id, questionId)
 
       return response.ok({
         message: 'Evaluation history retrieved successfully',

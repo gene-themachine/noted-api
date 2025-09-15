@@ -54,7 +54,7 @@ export default class Note extends BaseModel {
     if (note.contentChanged && note.content?.trim() && note.userId) {
       try {
         const vectorService = new NativeVectorService()
-        
+
         // Process vectorization asynchronously (fire and forget)
         setImmediate(async () => {
           try {
@@ -63,7 +63,7 @@ export default class Note extends BaseModel {
             console.error(`❌ Note vectorization failed: ${error.message}`)
           }
         })
-        
+
         console.log(`🔄 Starting immediate vectorization for note ${note.id}`)
       } catch (error) {
         console.error(`❌ Note vectorization failed: ${error.message}`)
@@ -77,8 +77,10 @@ export default class Note extends BaseModel {
   }
 
   get needsVectorization(): boolean {
-    return this.vectorStatus === 'pending' || 
-           this.vectorStatus === 'failed' ||
-           (this.vectorUpdatedAt ? this.updatedAt > this.vectorUpdatedAt : true)
+    return (
+      this.vectorStatus === 'pending' ||
+      this.vectorStatus === 'failed' ||
+      (this.vectorUpdatedAt ? this.updatedAt > this.vectorUpdatedAt : true)
+    )
   }
 }

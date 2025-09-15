@@ -1,21 +1,15 @@
 import { DateTime } from 'luxon'
-import hash from '@adonisjs/core/services/hash'
-import { compose } from '@adonisjs/core/helpers'
 import { BaseModel, column, hasMany } from '@adonisjs/lucid/orm'
-import { withAuthFinder } from '@adonisjs/auth/mixins/lucid'
-import { DbAccessTokensProvider } from '@adonisjs/auth/access_tokens'
 import type { HasMany } from '@adonisjs/lucid/types/relations'
 import Project from '#models/project'
 import Todo from '#models/todo'
 
-const AuthFinder = withAuthFinder(() => hash.use('scrypt'), {
-  uids: ['email'],
-  passwordColumnName: 'password',
-})
-
-export default class User extends compose(BaseModel, AuthFinder) {
+export default class User extends BaseModel {
   @column({ isPrimary: true })
   declare id: string // UUID, PK
+
+  @column({ columnName: 'supabase_uid' })
+  declare supabaseUid: string
 
   @column()
   declare firstName: string | null
@@ -24,10 +18,7 @@ export default class User extends compose(BaseModel, AuthFinder) {
   declare username: string | null
 
   @column()
-  declare email: string
-
-  @column({ serializeAs: null })
-  declare password: string
+  declare email: string | null
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -40,6 +31,4 @@ export default class User extends compose(BaseModel, AuthFinder) {
 
   @hasMany(() => Todo)
   declare todos: HasMany<typeof Todo>
-
-  static accessTokens = DbAccessTokensProvider.forModel(User)
 }

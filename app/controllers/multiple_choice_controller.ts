@@ -28,9 +28,9 @@ export default class MultipleChoiceController {
   )
 
   // Project-level multiple choice set methods
-  async getProjectMultipleChoiceSets({ params, response, auth }: HttpContext) {
+  async getProjectMultipleChoiceSets({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
 
       const multipleChoiceSets = await this.multipleChoiceService.getProjectMultipleChoiceSets(
@@ -53,9 +53,9 @@ export default class MultipleChoiceController {
     }
   }
 
-  async createProjectMultipleChoiceSet({ params, request, response, auth }: HttpContext) {
+  async createProjectMultipleChoiceSet({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
       const payload = await request.validateUsing(
         MultipleChoiceController.createProjectMultipleChoiceSetValidator
@@ -163,9 +163,9 @@ export default class MultipleChoiceController {
     }
   }
 
-  async getProjectMultipleChoiceSet({ params, response, auth }: HttpContext) {
+  async getProjectMultipleChoiceSet({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
 
       const multipleChoiceSet = await this.multipleChoiceService.getMultipleChoiceSet(
@@ -190,9 +190,9 @@ export default class MultipleChoiceController {
     }
   }
 
-  async updateProjectMultipleChoiceSet({ params, request, response, auth }: HttpContext) {
+  async updateProjectMultipleChoiceSet({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
       const payload = await request.validateUsing(
         MultipleChoiceController.updateMultipleChoiceSetValidator
@@ -229,9 +229,9 @@ export default class MultipleChoiceController {
     }
   }
 
-  async deleteProjectMultipleChoiceSet({ params, response, auth }: HttpContext) {
+  async deleteProjectMultipleChoiceSet({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { setId } = params
 
       await this.multipleChoiceService.deleteMultipleChoiceSet(user.id, setId)
@@ -253,9 +253,9 @@ export default class MultipleChoiceController {
   }
 
   // Starred multiple choice questions methods
-  async getProjectStarredMultipleChoiceQuestions({ params, response, auth }: HttpContext) {
+  async getProjectStarredMultipleChoiceQuestions({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
 
       // Verify user owns the project
@@ -284,9 +284,9 @@ export default class MultipleChoiceController {
     }
   }
 
-  async starMultipleChoiceQuestion({ params, response, auth }: HttpContext) {
+  async starMultipleChoiceQuestion({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId, questionId } = params
 
       // Verify user owns the project
@@ -326,9 +326,9 @@ export default class MultipleChoiceController {
     }
   }
 
-  async unstarMultipleChoiceQuestion({ params, response, auth }: HttpContext) {
+  async unstarMultipleChoiceQuestion({ params, response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId, questionId } = params
 
       // Verify user owns the project

@@ -9,9 +9,9 @@ export default class NotificationsController {
   /**
    * Get notifications for a specific project
    */
-  async getProjectNotifications({ request, response, auth, params }: HttpContext) {
+  async getProjectNotifications({ request, response, params }: HttpContext) {
     try {
-      const user = auth.user!
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
       const { limit = 50 } = request.qs()
 
@@ -37,9 +37,9 @@ export default class NotificationsController {
   /**
    * Get notifications for the authenticated user
    */
-  async getUserNotifications({ request, response, auth }: HttpContext) {
+  async getUserNotifications({ request, response }: HttpContext) {
     try {
-      const user = auth.user!
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { limit = 50 } = request.qs()
 
       const notifications = await this.notificationService.getUserNotifications(
@@ -61,9 +61,9 @@ export default class NotificationsController {
   /**
    * Delete a specific notification
    */
-  async deleteNotification({ response, auth, params }: HttpContext) {
+  async deleteNotification({ request, response, params }: HttpContext) {
     try {
-      const user = auth.user!
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { notificationId } = params
 
       // Get notification to check ownership
@@ -92,9 +92,9 @@ export default class NotificationsController {
   /**
    * Clear all completed notifications for a project
    */
-  async clearCompletedNotifications({ response, auth, params }: HttpContext) {
+  async clearCompletedNotifications({ request, response, params }: HttpContext) {
     try {
-      const user = auth.user!
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { projectId } = params
 
       // Check if user has access to the project

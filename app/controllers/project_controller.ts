@@ -23,16 +23,17 @@ export default class ProjectController {
   )
 
   // Create a new project/group
-  async createNewProject({ request, response, auth }: HttpContext) {
+  async createNewProject({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId =
+        (request as any)?.user?.id || (request as any)?.userId || (global as any)?.userId
       const payload = await request.validateUsing(ProjectController.createValidator)
 
       const project = await this.projectService.createProject({
         name: payload.name,
         description: payload.description || null,
         color: payload.color || null,
-        userId: user.id,
+        userId,
       })
 
       return response.created({
@@ -62,11 +63,10 @@ export default class ProjectController {
   }
 
   // Get all projects for the authenticated user
-  async getUserProjects({ response, auth }: HttpContext) {
+  async getUserProjects({ response, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
-
-      const projects = await this.projectService.getUserProjects(user.id)
+      const userId = (request as any)?.user?.id || (request as any)?.userId
+      const projects = await this.projectService.getUserProjects(userId)
 
       return response.ok({
         message: 'Projects retrieved successfully',
@@ -87,10 +87,10 @@ export default class ProjectController {
     }
   }
 
-  async getProjectById({ response, params, auth }: HttpContext) {
+  async getProjectById({ response, params, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
-      const project = await this.projectService.getProjectWithRelations(user.id, params.id)
+      const userId = (request as any)?.user?.id || (request as any)?.userId
+      const project = await this.projectService.getProjectWithRelations(userId, params.id)
 
       return response.ok({
         project,
@@ -108,16 +108,16 @@ export default class ProjectController {
   /**
    * Get all notes for a specific project
    */
-  async getProjectNotes({ response, params, auth }: HttpContext) {
+  async getProjectNotes({ response, params, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId
       const projectId = params.id
 
       // First verify user has access to the project
-      await this.projectService.getProjectById(user.id, projectId)
+      await this.projectService.getProjectById(userId, projectId)
 
       // Get notes for this project
-      const notes = await this.projectService.getProjectNotes(user.id, projectId)
+      const notes = await this.projectService.getProjectNotes(userId, projectId)
 
       return response.ok({
         message: 'Project notes retrieved successfully',
@@ -139,14 +139,14 @@ export default class ProjectController {
   /**
    * Get note summaries for a specific project (lightweight - no content)
    */
-  async getProjectNotesSummary({ response, params, auth }: HttpContext) {
+  async getProjectNotesSummary({ response, params, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId
       const projectId = params.id
       // First verify user has access to the project
-      await this.projectService.getProjectById(user.id, projectId)
+      await this.projectService.getProjectById(userId, projectId)
       // Get note summaries for this project
-      const notesSummary = await this.projectService.getProjectNotesSummary(user.id, projectId)
+      const notesSummary = await this.projectService.getProjectNotesSummary(userId, projectId)
       return response.ok({
         message: 'Project notes summary retrieved successfully',
         data: {
@@ -166,12 +166,12 @@ export default class ProjectController {
   /**
    * Get optimized data for tools screen - only summary counts and basic info
    */
-  async getProjectToolsData({ response, params, auth }: HttpContext) {
+  async getProjectToolsData({ response, params, request }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const userId = (request as any)?.user?.id || (request as any)?.userId
       const projectId = params.id
 
-      const toolsData = await this.projectService.getProjectToolsData(user.id, projectId)
+      const toolsData = await this.projectService.getProjectToolsData(userId, projectId)
 
       return response.ok({
         message: 'Project tools data retrieved successfully',

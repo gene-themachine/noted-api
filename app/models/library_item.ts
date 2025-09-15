@@ -1,5 +1,12 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo, manyToMany, afterSave, beforeSave } from '@adonisjs/lucid/orm'
+import {
+  BaseModel,
+  column,
+  belongsTo,
+  manyToMany,
+  afterSave,
+  beforeSave,
+} from '@adonisjs/lucid/orm'
 import Project from '#models/project'
 import Note from '#models/note'
 import type { BelongsTo, ManyToMany } from '@adonisjs/lucid/types/relations'
@@ -71,7 +78,7 @@ export default class LibraryItem extends BaseModel {
 
   // Track file changes for vectorization
   private fileChanged: boolean = false
-  
+
   // Track note association changes for metadata updates
   private noteAssociationChanged: boolean = false
   private oldNoteId: string | null = null
@@ -79,11 +86,12 @@ export default class LibraryItem extends BaseModel {
   @beforeSave()
   static async checkFileChanges(libraryItem: LibraryItem) {
     // Check if file-related fields changed (excluding noteId - association changes don't require re-vectorization)
-    if (libraryItem.$dirty.storagePath || 
-        libraryItem.$dirty.name || 
-        libraryItem.$dirty.mimeType ||
-        libraryItem.$isNew) {
-      
+    if (
+      libraryItem.$dirty.storagePath ||
+      libraryItem.$dirty.name ||
+      libraryItem.$dirty.mimeType ||
+      libraryItem.$isNew
+    ) {
       libraryItem.fileChanged = true
       libraryItem.vectorStatus = 'pending'
       libraryItem.vectorUpdatedAt = DateTime.now()
@@ -103,8 +111,8 @@ export default class LibraryItem extends BaseModel {
     if (libraryItem.fileChanged && libraryItem.isProcessableFile()) {
       try {
         const vectorService = new NativeVectorService()
-        
-        // Process vectorization asynchronously (fire and forget)  
+
+        // Process vectorization asynchronously (fire and forget)
         setImmediate(async () => {
           try {
             await vectorService.vectorizeLibraryItem(libraryItem.id)
@@ -112,7 +120,7 @@ export default class LibraryItem extends BaseModel {
             console.error(`❌ Library item vectorization failed: ${error.message}`)
           }
         })
-        
+
         console.log(`🔄 Starting immediate vectorization for library item ${libraryItem.id}`)
       } catch (error) {
         console.error(`❌ Library item vectorization failed: ${error.message}`)
@@ -123,7 +131,7 @@ export default class LibraryItem extends BaseModel {
     if (libraryItem.noteAssociationChanged) {
       try {
         const vectorService = new NativeVectorService()
-        
+
         // Update metadata asynchronously (fire and forget)
         setImmediate(async () => {
           try {
@@ -136,8 +144,10 @@ export default class LibraryItem extends BaseModel {
             console.error(`❌ Library item metadata update failed: ${error.message}`)
           }
         })
-        
-        console.log(`🔄 Starting metadata update for library item ${libraryItem.id} (note association change)`)
+
+        console.log(
+          `🔄 Starting metadata update for library item ${libraryItem.id} (note association change)`
+        )
       } catch (error) {
         console.error(`❌ Library item metadata update failed: ${error.message}`)
       }
@@ -155,8 +165,10 @@ export default class LibraryItem extends BaseModel {
   }
 
   get needsVectorization(): boolean {
-    return this.vectorStatus === 'pending' || 
-           this.vectorStatus === 'failed' ||
-           (this.vectorUpdatedAt ? this.updatedAt > this.vectorUpdatedAt : true)
+    return (
+      this.vectorStatus === 'pending' ||
+      this.vectorStatus === 'failed' ||
+      (this.vectorUpdatedAt ? this.updatedAt > this.vectorUpdatedAt : true)
+    )
   }
 }

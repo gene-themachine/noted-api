@@ -52,7 +52,7 @@ export default class NoteService {
    */
   async getOrCreateLibrarySystemNote(projectId: string, userId: string): Promise<Note> {
     const systemNoteName = '__LIBRARY_ITEMS_SYSTEM__'
-    
+
     // Try to find existing system note for this project
     let systemNote = await Note.query()
       .where('projectId', projectId)
@@ -66,7 +66,8 @@ export default class NoteService {
         userId: userId,
         projectId: projectId,
         name: systemNoteName,
-        content: 'System note for library items. This note is used internally to maintain database referential integrity for standalone library items that haven\'t been attached to specific notes yet.',
+        content:
+          "System note for library items. This note is used internally to maintain database referential integrity for standalone library items that haven't been attached to specific notes yet.",
       })
 
       // Create default study options for system note
@@ -260,8 +261,10 @@ export default class NoteService {
     // Remove association (sets noteId to null)
     await libraryItem.merge({ noteId: null }).save()
 
-    console.log(`🔄 Document detached from note: library item ${libraryItemId} removed from note ${noteId}`)
-    
+    console.log(
+      `🔄 Document detached from note: library item ${libraryItemId} removed from note ${noteId}`
+    )
+
     // The LibraryItem model's afterSave hook will trigger metadata update
     // to move vectors back to system note when noteId changes to null
   }

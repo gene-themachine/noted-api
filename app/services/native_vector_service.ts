@@ -36,15 +36,15 @@ export default class NativeVectorService {
     while (index < text.length) {
       const end = Math.min(index + chunkSize, text.length)
       const chunk = text.slice(index, end)
-      
+
       chunks.push({
         content: chunk,
-        index: chunkIndex++
+        index: chunkIndex++,
       })
 
       // Move forward by (chunkSize - overlap)
       index += chunkSize - overlap
-      
+
       // Prevent infinite loop if overlap >= chunkSize
       if (index <= chunks[chunks.length - 1].index * (chunkSize - overlap)) {
         index = chunks[chunks.length - 1].index * (chunkSize - overlap) + chunkSize
@@ -81,7 +81,7 @@ export default class NativeVectorService {
 
       // Split text into chunks
       const chunks = this.splitText(note.content, 1000, 200)
-      
+
       if (chunks.length === 0) {
         await Note.query().where('id', noteId).update({
           vectorStatus: 'completed',
@@ -91,7 +91,7 @@ export default class NativeVectorService {
       }
 
       // Generate embeddings for all chunks
-      const chunkTexts = chunks.map(c => c.content)
+      const chunkTexts = chunks.map((c) => c.content)
       const embeddings = await getEmbeddings(chunkTexts)
 
       // Prepare vectors for Pinecone
@@ -114,7 +114,7 @@ export default class NativeVectorService {
             text: chunks[i].content,
             chunkIndex: i,
             chunkSize: chunks[i].content.length,
-          }
+          },
         })
 
         dbChunks.push({
@@ -133,7 +133,7 @@ export default class NativeVectorService {
       // Store in Pinecone
       if (vectors.length > 0) {
         await this.pineconeService.upsert(vectors)
-        
+
         // Store metadata in database
         await VectorChunk.createMany(dbChunks)
       }
@@ -195,7 +195,7 @@ export default class NativeVectorService {
 
       // Determine note association
       let noteId = libraryItem.noteId || libraryItem.note?.id
-      
+
       // If no note association, use system note for this project
       if (!noteId) {
         console.log(`📝 Library item ${libraryItemId} has no note association, using system note`)
@@ -208,7 +208,7 @@ export default class NativeVectorService {
 
       // Split text into chunks
       const chunks = this.splitText(content, 1000, 200)
-      
+
       if (chunks.length === 0) {
         await LibraryItem.query().where('id', libraryItemId).update({
           vectorStatus: 'completed',
@@ -218,7 +218,7 @@ export default class NativeVectorService {
       }
 
       // Generate embeddings for all chunks
-      const chunkTexts = chunks.map(c => c.content)
+      const chunkTexts = chunks.map((c) => c.content)
       const embeddings = await getEmbeddings(chunkTexts)
 
       // Extract metadata
@@ -249,7 +249,7 @@ export default class NativeVectorService {
             text: chunks[i].content,
             chunkIndex: i,
             chunkSize: chunks[i].content.length,
-          }
+          },
         })
 
         dbChunks.push({
@@ -272,7 +272,7 @@ export default class NativeVectorService {
       // Store in Pinecone
       if (vectors.length > 0) {
         await this.pineconeService.upsert(vectors)
-        
+
         // Store metadata in database
         await VectorChunk.createMany(dbChunks)
       }
@@ -300,10 +300,8 @@ export default class NativeVectorService {
   async searchForQA(noteId: string, question: string, topK: number = 5): Promise<any[]> {
     try {
       // Get note with security validation
-      const note = await Note.query()
-        .where('id', noteId)
-        .first()
-      
+      const note = await Note.query().where('id', noteId).first()
+
       if (!note || !note.projectId) {
         console.error(`❌ Note ${noteId} not found or missing project association`)
         return []
@@ -315,39 +313,43 @@ export default class NativeVectorService {
         .whereNotNull('noteId') // Only get items with valid note associations
         .where('projectId', note.projectId) // Additional security check
         .select('id')
-      
-      const attachedLibraryItemIds = attachedLibraryItems.map(item => item.id)
-      
-      console.log(`🔍 Q&A search for note ${noteId}: ${attachedLibraryItemIds.length} attached documents`)
+
+      const attachedLibraryItemIds = attachedLibraryItems.map((item) => item.id)
+
+      console.log(
+        `🔍 Q&A search for note ${noteId}: ${attachedLibraryItemIds.length} attached documents`
+      )
 
       // Multi-layer security filter
-      const filter = { 
-        noteId,                    // Note-level isolation
-        userId: note.userId,       // User-level isolation (CRITICAL for SaaS)
-        projectId: note.projectId  // Project-level isolation
+      const filter = {
+        noteId, // Note-level isolation
+        userId: note.userId, // User-level isolation (CRITICAL for SaaS)
+        projectId: note.projectId, // Project-level isolation
       }
-      
+
       const results = await this.pineconeService.query(question, topK, filter)
-      
+
       // Additional filtering: only include results from currently attached library items
-      const filteredResults = results.filter(result => {
+      const filteredResults = results.filter((result) => {
         // Always include note content
         if (result.metadata.contentType === 'note') {
           return true
         }
-        
+
         // For library items, only include if currently attached
         if (result.metadata.contentType === 'library_item') {
           return attachedLibraryItemIds.includes(result.metadata.libraryItemId)
         }
-        
+
         return false
       })
-      
-      console.log(`🔍 Filtered ${results.length} → ${filteredResults.length} results (active attachments only)`)
-      
+
+      console.log(
+        `🔍 Filtered ${results.length} → ${filteredResults.length} results (active attachments only)`
+      )
+
       // Enhance results with citation info
-      return filteredResults.map(result => ({
+      return filteredResults.map((result) => ({
         content: result.content,
         score: result.score,
         metadata: result.metadata,
@@ -368,19 +370,14 @@ export default class NativeVectorService {
   private async deleteNoteVectors(noteId: string): Promise<void> {
     try {
       // Get existing chunks
-      const chunks = await VectorChunk.query()
-        .where('noteId', noteId)
-        .where('contentType', 'note')
+      const chunks = await VectorChunk.query().where('noteId', noteId).where('contentType', 'note')
 
       if (chunks.length > 0) {
-        const ids = chunks.map(c => c.pineconeId)
+        const ids = chunks.map((c) => c.pineconeId)
         await this.pineconeService.deleteByIds(ids)
-        
+
         // Delete from database
-        await VectorChunk.query()
-          .where('noteId', noteId)
-          .where('contentType', 'note')
-          .delete()
+        await VectorChunk.query().where('noteId', noteId).where('contentType', 'note').delete()
       }
     } catch (error) {
       console.error(`⚠️ Failed to delete note vectors: ${error.message}`)
@@ -393,17 +390,14 @@ export default class NativeVectorService {
   private async deleteLibraryItemVectors(libraryItemId: string): Promise<void> {
     try {
       // Get existing chunks
-      const chunks = await VectorChunk.query()
-        .where('libraryItemId', libraryItemId)
+      const chunks = await VectorChunk.query().where('libraryItemId', libraryItemId)
 
       if (chunks.length > 0) {
-        const ids = chunks.map(c => c.pineconeId)
+        const ids = chunks.map((c) => c.pineconeId)
         await this.pineconeService.deleteByIds(ids)
-        
+
         // Delete from database
-        await VectorChunk.query()
-          .where('libraryItemId', libraryItemId)
-          .delete()
+        await VectorChunk.query().where('libraryItemId', libraryItemId).delete()
       }
     } catch (error) {
       console.error(`⚠️ Failed to delete library item vectors: ${error.message}`)
@@ -438,13 +432,9 @@ export default class NativeVectorService {
   private extractTitle(filename: string, content: string): string | undefined {
     // Use filename without extension as fallback
     const baseName = filename.replace(/\.[^/.]+$/, '')
-    
+
     // Try to extract from content
-    const titlePatterns = [
-      /^#\s+(.+)$/m,
-      /^Title[:\s]+(.+)$/mi,
-      /^(.+)\n={3,}$/m,
-    ]
+    const titlePatterns = [/^#\s+(.+)$/m, /^Title[:\s]+(.+)$/im, /^(.+)\n={3,}$/m]
 
     for (const pattern of titlePatterns) {
       const match = content.match(pattern)
@@ -457,7 +447,11 @@ export default class NativeVectorService {
   /**
    * Update vector metadata when library item note association changes
    */
-  async updateLibraryItemNoteAssociation(libraryItemId: string, oldNoteId: string | null, newNoteId: string | null): Promise<void> {
+  async updateLibraryItemNoteAssociation(
+    libraryItemId: string,
+    oldNoteId: string | null,
+    newNoteId: string | null
+  ): Promise<void> {
     try {
       // If no new note ID, get or create system note
       let targetNoteId = newNoteId
@@ -466,7 +460,7 @@ export default class NativeVectorService {
           .where('id', libraryItemId)
           .preload('project')
           .firstOrFail()
-        
+
         const systemNote = await this.noteService.getOrCreateLibrarySystemNote(
           libraryItem.projectId,
           libraryItem.project.userId
@@ -474,22 +468,22 @@ export default class NativeVectorService {
         targetNoteId = systemNote.id
       }
 
-      console.log(`🔄 Updating note association for library item ${libraryItemId}: ${oldNoteId || 'none'} → ${targetNoteId}`)
+      console.log(
+        `🔄 Updating note association for library item ${libraryItemId}: ${oldNoteId || 'none'} → ${targetNoteId}`
+      )
 
       // Get vector IDs from database instead of using prefix matching
       const vectorChunks = await VectorChunk.query()
         .where('libraryItemId', libraryItemId)
         .select('pineconeId', 'id')
-      
+
       if (vectorChunks.length === 0) {
         console.log(`ℹ️ No vector chunks found for library item ${libraryItemId}`)
         return
       }
 
       // Extract Pinecone IDs for metadata update
-      const vectorIds = vectorChunks
-        .map(chunk => chunk.pineconeId)
-        .filter(id => id) // Remove any null/undefined IDs
+      const vectorIds = vectorChunks.map((chunk) => chunk.pineconeId).filter((id) => id) // Remove any null/undefined IDs
 
       if (vectorIds.length > 0) {
         // Update vectors in Pinecone using specific IDs
@@ -501,7 +495,9 @@ export default class NativeVectorService {
         .where('libraryItemId', libraryItemId)
         .update({ noteId: targetNoteId })
 
-      console.log(`✅ Updated note association for library item ${libraryItemId} (${vectorIds.length} vectors)`)
+      console.log(
+        `✅ Updated note association for library item ${libraryItemId} (${vectorIds.length} vectors)`
+      )
     } catch (error) {
       console.error(`❌ Failed to update note association: ${error.message}`)
       throw error

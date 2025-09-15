@@ -28,9 +28,8 @@ export default class LibrariesController {
     })
   )
 
-  async getPresignedUrl({ request, response, auth }: HttpContext) {
+  async getPresignedUrl({ request, response }: HttpContext) {
     try {
-      await auth.authenticate()
       const payload = await request.validateUsing(LibrariesController.presignedUrlValidator)
 
       const result = await this.libraryService.getPresignedUrl({
@@ -65,9 +64,9 @@ export default class LibrariesController {
     }
   }
 
-  async uploadFile({ request, response, auth }: HttpContext) {
+  async uploadFile({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const payload = await request.validateUsing(LibrariesController.uploadValidator)
 
       const libraryItem = await this.libraryService.createLibraryItem({
@@ -107,9 +106,9 @@ export default class LibrariesController {
     }
   }
 
-  async getAllLibraryItems({ response, auth }: HttpContext) {
+  async getAllLibraryItems({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const libraryItems = await this.libraryService.getAllLibraryItems(user.id)
       return response.json(libraryItems)
     } catch (error) {
@@ -119,9 +118,9 @@ export default class LibrariesController {
     }
   }
 
-  async getProjectLibraryItems({ request, response, auth }: HttpContext) {
+  async getProjectLibraryItems({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const projectId = request.param('projectId')
 
       const libraryItems = await this.libraryService.getProjectLibraryItems(user.id, projectId)
@@ -136,9 +135,9 @@ export default class LibrariesController {
     }
   }
 
-  async getLibraryItemById({ request, response, auth }: HttpContext) {
+  async getLibraryItemById({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const libraryItemId = request.param('id')
 
       const libraryItem = await this.libraryService.getLibraryItemById(user.id, libraryItemId)
@@ -153,9 +152,9 @@ export default class LibrariesController {
     }
   }
 
-  async getLibraryItemViewUrl({ request, response, auth }: HttpContext) {
+  async getLibraryItemViewUrl({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const libraryItemId = request.param('id')
 
       const result = await this.libraryService.getLibraryItemViewUrl(user.id, libraryItemId)
@@ -170,9 +169,9 @@ export default class LibrariesController {
     }
   }
 
-  async toggleGlobalStatus({ request, response, auth }: HttpContext) {
+  async toggleGlobalStatus({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const libraryItemId = request.param('id')
 
       const libraryItem = await this.libraryService.toggleGlobalStatus(user.id, libraryItemId)
@@ -190,13 +189,13 @@ export default class LibrariesController {
     }
   }
 
-  async getLibraryItemStatus({ request, response, auth }: HttpContext) {
+  async getLibraryItemStatus({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const libraryItemId = request.param('id')
 
       const libraryItem = await this.libraryService.getLibraryItemById(user.id, libraryItemId)
-      
+
       return response.json({
         vectorStatus: libraryItem.vectorStatus,
         processingStatus: libraryItem.processingStatus,

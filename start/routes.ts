@@ -21,10 +21,7 @@ const QAController = () => import('#controllers/qa_controller')
 const TodoController = () => import('#controllers/todo_controller')
 
 // Public routes (no authentication required)
-router.group(() => {
-  router.post('/auth/register', [AuthController, 'register'])
-  router.post('/auth/login', [AuthController, 'login'])
-})
+// (Auth is handled client-side via Supabase)
 
 // Protected routes (authentication required)
 router
@@ -63,6 +60,9 @@ router
 
     // Q&A routes
     router.post('/notes/:noteId/qa/generate', [QAController, 'generate'])
+
+    // Intelligent Q&A routes with intent classification
+    router.post('/notes/:noteId/qa/intelligent', [QAController, 'generateIntelligent'])
 
     // New routes for not
     router.post('/notes/:noteId/library-items/:libraryItemId', [
@@ -199,10 +199,11 @@ router
     router.delete('/todos/:id', [TodoController, 'destroy'])
     router.patch('/todos/:id/toggle', [TodoController, 'toggle'])
   })
-  .use(middleware.auth())
+  .use(middleware.supabaseAuth())
 
-// SSE Q&A streaming endpoint (outside auth middleware to handle manual auth)
+// SSE Q&A streaming endpoints (outside auth middleware to handle manual auth)
 router.get('/notes/:noteId/qa/stream', [QAController, 'streamSSE'])
+router.get('/notes/:noteId/qa/intelligent/stream', [QAController, 'streamIntelligent'])
 
 // Test endpoint for debugging Q&A streaming
 router.get('/test/qa', [QAController, 'test'])

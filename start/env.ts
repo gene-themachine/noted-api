@@ -50,7 +50,7 @@ export default await Env.create(new URL('../', import.meta.url), {
 
   /*
   |----------------------------------------------------------
-  | Variables for configuring AI services (OpenAI + LangChain)
+  | Variables for configuring AI services (OpenAI + Pinecone)
   |----------------------------------------------------------
   */
   OPENAI_API_KEY: Env.schema.string(),

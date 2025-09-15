@@ -37,7 +37,12 @@ export async function getStreamingCompletion(
   prompt: string,
   model = 'gpt-4o',
   onChunk?: (chunk: string) => void
-): Promise<{ response: string; promptTokens: number; completionTokens: number; totalTokens: number }> {
+): Promise<{
+  response: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}> {
   try {
     // Starting streaming API call
     const client = getOpenAIClient()
@@ -68,13 +73,15 @@ export async function getStreamingCompletion(
     const totalTokens = promptTokens + completionTokens
     const duration = ((Date.now() - startTime) / 1000).toFixed(1)
 
-    console.log(`✅ Streaming completed - Response: ${fullResponse.length} chars, Tokens: ${promptTokens} prompt + ${completionTokens} completion = ${totalTokens} total (${duration}s)`)
-    
+    console.log(
+      `✅ Streaming completed - Response: ${fullResponse.length} chars, Tokens: ${promptTokens} prompt + ${completionTokens} completion = ${totalTokens} total (${duration}s)`
+    )
+
     return {
       response: fullResponse,
       promptTokens,
       completionTokens,
-      totalTokens
+      totalTokens,
     }
   } catch (error) {
     console.error('❌ Error getting streaming completion from OpenAI:', error)
@@ -86,32 +93,34 @@ export function countTokens(text: string, model = 'gpt-4o'): number {
   // Use character-based estimation for token counting
   // GPT models average ~4 characters per token for English text
   // This is a reasonable approximation that avoids the tiktoken dependency
-  
+
   // Model-specific adjustments (optional)
   let charsPerToken = 4
   if (model.includes('gpt-3.5')) {
     charsPerToken = 4.5 // GPT-3.5 is slightly less efficient
   }
-  
+
   return Math.ceil(text.length / charsPerToken)
 }
 
 export async function getEmbeddings(texts: string[]): Promise<number[][]> {
   try {
     const client = getOpenAIClient()
-    
+
     // OpenAI recommends replacing newlines with spaces for embeddings
-    const processedTexts = texts.map(text => text.replace(/\n/g, ' '))
-    
+    const processedTexts = texts.map((text) => text.replace(/\n/g, ' '))
+
     const response = await client.embeddings.create({
       model: 'text-embedding-3-small',
       input: processedTexts,
     })
-    
+
     // Extract the embedding vectors
     const embeddings = response.data.map((item) => item.embedding)
-    
-    console.log(`✅ Generated ${embeddings.length} embeddings (dimension: ${embeddings[0]?.length || 0})`)
+
+    console.log(
+      `✅ Generated ${embeddings.length} embeddings (dimension: ${embeddings[0]?.length || 0})`
+    )
     return embeddings
   } catch (error) {
     console.error('❌ Error generating embeddings:', error)
@@ -131,25 +140,25 @@ export function truncateToTokenLimit(text: string, maxTokens = 120000, model = '
   if (model.includes('gpt-3.5')) {
     charsPerToken = 4.5
   }
-  
+
   const maxChars = maxTokens * charsPerToken
-  
+
   if (text.length <= maxChars) {
     return text
   }
-  
+
   const estimatedTokens = Math.ceil(text.length / charsPerToken)
   console.log(`✂️ Truncating text from ~${estimatedTokens} to ${maxTokens} tokens`)
-  
+
   // Truncate at character level, trying to break at word boundary
   let truncated = text.substring(0, maxChars)
-  
+
   // Try to break at last complete word
   const lastSpace = truncated.lastIndexOf(' ')
-  if (lastSpace > maxChars * 0.9) { // Only if we're not losing too much
+  if (lastSpace > maxChars * 0.9) {
+    // Only if we're not losing too much
     truncated = truncated.substring(0, lastSpace)
   }
-  
+
   return truncated
 }
-

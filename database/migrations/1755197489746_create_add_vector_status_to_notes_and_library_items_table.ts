@@ -4,13 +4,17 @@ export default class extends BaseSchema {
   async up() {
     // Add vector status to notes table
     this.schema.alterTable('notes', (table) => {
-      table.enum('vector_status', ['pending', 'processing', 'completed', 'failed']).defaultTo('pending')
+      table
+        .enum('vector_status', ['pending', 'processing', 'completed', 'failed'])
+        .defaultTo('pending')
       table.timestamp('vector_updated_at').nullable()
     })
 
     // Add vector status to library_items table
     this.schema.alterTable('library_items', (table) => {
-      table.enum('vector_status', ['pending', 'processing', 'completed', 'failed']).defaultTo('pending')
+      table
+        .enum('vector_status', ['pending', 'processing', 'completed', 'failed'])
+        .defaultTo('pending')
       table.timestamp('vector_updated_at').nullable()
     })
   }

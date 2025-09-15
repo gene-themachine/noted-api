@@ -27,9 +27,9 @@ export default class TodoController {
   /**
    * Get all todos for the authenticated user
    */
-  async index({ auth, response }: HttpContext) {
+  async index({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const todos = await this.todoService.getUserTodos(user.id)
 
       return response.ok({
@@ -48,9 +48,9 @@ export default class TodoController {
   /**
    * Create a new todo
    */
-  async store({ auth, request, response }: HttpContext) {
+  async store({ request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const payload = await request.validateUsing(TodoController.createValidator)
 
       const todo = await this.todoService.createTodo({
@@ -76,9 +76,9 @@ export default class TodoController {
   /**
    * Get a specific todo by ID
    */
-  async show({ auth, params, response }: HttpContext) {
+  async show({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { id } = params
 
       const todo = await this.todoService.getTodoById(id, user.id)
@@ -105,9 +105,9 @@ export default class TodoController {
   /**
    * Update a todo
    */
-  async update({ auth, params, request, response }: HttpContext) {
+  async update({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { id } = params
       const payload = await request.validateUsing(TodoController.updateValidator)
 
@@ -136,9 +136,9 @@ export default class TodoController {
   /**
    * Delete a todo
    */
-  async destroy({ auth, params, response }: HttpContext) {
+  async destroy({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { id } = params
 
       await this.todoService.deleteTodo(id, user.id)
@@ -165,9 +165,9 @@ export default class TodoController {
   /**
    * Toggle todo completion status
    */
-  async toggle({ auth, params, response }: HttpContext) {
+  async toggle({ params, request, response }: HttpContext) {
     try {
-      const user = await auth.authenticate()
+      const user = (request as any)?.user || { id: (request as any)?.userId }
       const { id } = params
 
       const todo = await this.todoService.toggleTodoComplete(id, user.id)

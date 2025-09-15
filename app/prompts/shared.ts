@@ -5,12 +5,12 @@ export function extractJsonFromResponse(response: string): any {
   } catch (error) {
     // Strip markdown code blocks if present
     let cleanedResponse = response.trim()
-    
+
     // Remove markdown code block wrappers (```json ... ``` or ``` ... ```)
     const codeBlockMatch = cleanedResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
     if (codeBlockMatch) {
       cleanedResponse = codeBlockMatch[1].trim()
-      
+
       try {
         // Try parsing the cleaned response
         return JSON.parse(cleanedResponse)
@@ -18,7 +18,7 @@ export function extractJsonFromResponse(response: string): any {
         console.error('❌ Failed to parse cleaned response:', cleanedError)
       }
     }
-    
+
     // If that fails, try to extract JSON object or array from the response
     // Look for JSON objects {...} or arrays [...]
     const jsonMatch = cleanedResponse.match(/[\{\[][\s\S]*[\}\]]/)

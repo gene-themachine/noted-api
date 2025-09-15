@@ -99,7 +99,7 @@ export default class VectorChunk extends BaseModel {
   declare user: BelongsTo<typeof User>
 
   @belongsTo(() => VectorChunk, {
-    foreignKey: 'parentChunkId'
+    foreignKey: 'parentChunkId',
   })
   declare parentChunk: BelongsTo<typeof VectorChunk>
 
@@ -117,9 +117,7 @@ export default class VectorChunk extends BaseModel {
   }
 
   static async findPendingForProcessing() {
-    return this.query()
-      .where('vectorStatus', 'pending')
-      .orderBy('createdAt', 'asc')
+    return this.query().where('vectorStatus', 'pending').orderBy('createdAt', 'asc')
   }
 
   // Instance methods
