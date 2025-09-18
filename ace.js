@@ -17,9 +17,26 @@
 */
 
 /**
- * Register hook to process TypeScript files using ts-node
+ * Register hook to process TypeScript files using ts-node (dev only)
  */
-import 'ts-node-maintained/register/esm'
+if (process.env.NODE_ENV !== 'production') {
+  const candidates = [
+    'ts-node-maintained/register/esm',
+    'ts-node/register/esm',
+    'ts-node/register',
+  ]
+  let loaded = false
+  for (const candidate of candidates) {
+    try {
+      await import(candidate)
+      loaded = true
+      break
+    } catch {}
+  }
+  if (!loaded) {
+    // No ts-node hook available; will rely on compiled JavaScript if present
+  }
+}
 
 /**
  * Import ace console entrypoint
