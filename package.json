@@ -5,8 +5,8 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
+    "build": "node --loader tsx ace build",
     "start": "node build/bin/server.js",
-    "build": "node ace build",
     "predev": "npm run build",
     "dev": "node ace serve --hmr",
     "test": "node ace test",
@@ -52,6 +52,7 @@
     "prettier": "^3.5.3",
     "ts-node": "^10.9.2",
     "ts-node-maintained": "^10.9.6",
+    "tsx": "^4.20.5",
     "typescript": "~5.8"
   },
   "dependencies": {
