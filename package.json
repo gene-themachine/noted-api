@@ -5,7 +5,7 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "node --loader tsx ace build",
+    "build": "tsx ace build",
     "start": "node build/bin/server.js",
     "predev": "npm run build",
     "dev": "node ace serve --hmr",
