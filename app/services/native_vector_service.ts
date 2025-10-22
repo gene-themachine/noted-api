@@ -98,7 +98,7 @@ export default class NativeVectorService {
       const vectors: VectorRecord[] = []
       const dbChunks = []
 
-      for (let i = 0; i < chunks.length; i++) {
+      for (const [i] of chunks.entries()) {
         const chunkId = uuidv4()
         const pineconeId = `${noteId}_note_${i}`
 
@@ -229,7 +229,7 @@ export default class NativeVectorService {
       const vectors: VectorRecord[] = []
       const dbChunks = []
 
-      for (let i = 0; i < chunks.length; i++) {
+      for (const [i] of chunks.entries()) {
         const chunkId = uuidv4()
         const pineconeId = `${noteId}_lib_${libraryItemId}_${i}`
 

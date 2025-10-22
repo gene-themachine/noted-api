@@ -73,7 +73,7 @@ export default class IntentClassificationService {
       const confidence =
         typeof result.confidence === 'number'
           ? result.confidence
-          : parseFloat(result.confidence || '0.5') || 0.5
+          : Number.parseFloat(result.confidence || '0.5') || 0.5
 
       return {
         intent,

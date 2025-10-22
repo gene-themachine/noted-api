@@ -202,12 +202,7 @@ export default class ProjectService {
   /**
    * Move a node to a new parent and position
    */
-  moveNodeInTree(
-    tree: TreeNode,
-    nodeId: string,
-    newParentId: string,
-    newIndex: number
-  ): boolean {
+  moveNodeInTree(tree: TreeNode, nodeId: string, newParentId: string, newIndex: number): boolean {
     // Prevent moving root
     if (nodeId === 'root') return false
 
@@ -538,10 +533,15 @@ export default class ProjectService {
     const project = await this.authService.getProjectForUser(userId, projectId)
 
     // Import models dynamically to avoid circular dependencies
-    const Note = (await import('#models/note')).default
-    const LibraryItem = (await import('#models/library_item')).default
-    const FlashcardSet = (await import('#models/flashcard_set')).default
-    const MultipleChoiceSet = (await import('#models/multiple_choice_set')).default
+    const noteModule = await import('#models/note')
+    const libraryItemModule = await import('#models/library_item')
+    const flashcardSetModule = await import('#models/flashcard_set')
+    const multipleChoiceSetModule = await import('#models/multiple_choice_set')
+
+    const Note = noteModule.default
+    const LibraryItem = libraryItemModule.default
+    const FlashcardSet = flashcardSetModule.default
+    const MultipleChoiceSet = multipleChoiceSetModule.default
 
     // Get counts only - much faster than loading full data
     const [notesCount, libraryItemsCount, flashcardSetsCount, multipleChoiceSetsCount] =
@@ -630,7 +630,8 @@ export default class ProjectService {
     await this.authService.getProjectForUser(userId, projectId)
 
     // Import database service for transactions
-    const db = (await import('@adonisjs/lucid/services/db')).default
+    const dbModule = await import('@adonisjs/lucid/services/db')
+    const db = dbModule.default
 
     // Use transaction to ensure all-or-nothing deletion
     await db.transaction(async (trx) => {
@@ -717,10 +718,7 @@ export default class ProjectService {
       // Flashcard library items pivot
       await trx
         .from('flashcard_library_items')
-        .whereIn(
-          'flashcard_id',
-          trx.from('flashcards').select('id').where('project_id', projectId)
-        )
+        .whereIn('flashcard_id', trx.from('flashcards').select('id').where('project_id', projectId))
         .delete()
 
       // 3. Delete free response evaluations, questions, and sets
