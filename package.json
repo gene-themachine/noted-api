@@ -8,11 +8,14 @@
     "build": "tsx ace build",
     "start": "node build/bin/server.js",
     "predev": "npm run build",
-    "dev": "node ace serve --hmr",
+    "dev": "tsx ace serve --hmr",
     "test": "node ace test",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "migration:run": "tsx ace migration:run",
+    "migration:rollback": "tsx ace migration:rollback",
+    "migration:status": "tsx ace migration:status"
   },
   "imports": {
     "#controllers/*": "./app/controllers/*.js",

@@ -16,7 +16,6 @@ const LibrariesController = () => import('#controllers/libraries_controller')
 const FlashcardController = () => import('#controllers/flashcard_controller')
 const MultipleChoiceController = () => import('#controllers/multiple_choice_controller')
 const FreeResponseController = () => import('#controllers/free_response_controller')
-const NotificationsController = () => import('#controllers/notifications_controller')
 const QAController = () => import('#controllers/qa_controller')
 const TodoController = () => import('#controllers/todo_controller')
 
@@ -33,6 +32,10 @@ router
     router.post('/projects', [ProjectController, 'createNewProject'])
     router.get('/projects', [ProjectController, 'getUserProjects'])
     router.get('/projects/:id', [ProjectController, 'getProjectById'])
+    router.put('/projects/:id', [ProjectController, 'updateProject'])
+    router.delete('/projects/:id', [ProjectController, 'deleteProject'])
+    router.put('/projects/:id/tree/move', [ProjectController, 'moveNode'])
+    router.put('/projects/:id/tree/reorder', [ProjectController, 'reorderNodes'])
     router.get('/projects/:id/notes', [ProjectController, 'getProjectNotes'])
     // Lightweight endpoint for note selection UI - returns only essential fields without content
     router.get('/projects/:id/notes/summary', [ProjectController, 'getProjectNotesSummary'])
@@ -179,18 +182,6 @@ router
     router.get('/libraries/:id/status', [LibrariesController, 'getLibraryItemStatus'])
     router.put('/libraries/:id/toggle-global', [LibrariesController, 'toggleGlobalStatus'])
 
-    // Notification routes
-    router.get('/projects/:projectId/notifications', [
-      NotificationsController,
-      'getProjectNotifications',
-    ])
-    router.get('/notifications', [NotificationsController, 'getUserNotifications'])
-    router.delete('/notifications/:notificationId', [NotificationsController, 'deleteNotification'])
-    router.delete('/projects/:projectId/notifications/completed', [
-      NotificationsController,
-      'clearCompletedNotifications',
-    ])
-
     // Todo routes
     router.get('/todos', [TodoController, 'index'])
     router.post('/todos', [TodoController, 'store'])
@@ -207,8 +198,6 @@ router.get('/notes/:noteId/qa/intelligent/stream', [QAController, 'streamIntelli
 
 // Test endpoint for debugging Q&A streaming
 router.get('/test/qa', [QAController, 'test'])
-
-// SSE functionality removed - using static notifications only
 
 // Basic route
 router.get('/', async () => {

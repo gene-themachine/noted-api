@@ -7,6 +7,7 @@ interface TreeNode {
   type: 'folder' | 'note'
   noteId?: string
   children?: TreeNode[]
+  order?: number
 }
 
 interface CreateProjectData {
@@ -69,6 +70,10 @@ export default class ProjectService {
     if (!parent) return false
 
     if (!parent.children) parent.children = []
+
+    // Assign order based on current children length
+    node.order = parent.children.length
+
     parent.children.push(node)
     return true
   }
@@ -147,6 +152,146 @@ export default class ProjectService {
   }
 
   /**
+   * Find a node by ID in the tree (returns the node and its parent)
+   */
+  findNodeById(
+    tree: TreeNode,
+    nodeId: string,
+    parent: TreeNode | null = null
+  ): { node: TreeNode; parent: TreeNode | null } | null {
+    if (tree.id === nodeId) {
+      return { node: tree, parent }
+    }
+
+    if (!tree.children) return null
+
+    for (const child of tree.children) {
+      if (child.id === nodeId) {
+        return { node: child, parent: tree }
+      }
+
+      if (child.type === 'folder') {
+        const result = this.findNodeById(child, nodeId, tree)
+        if (result) return result
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Check if a node is a descendant of another node
+   */
+  isDescendant(tree: TreeNode, ancestorId: string, descendantId: string): boolean {
+    if (tree.id === descendantId) return false
+    if (tree.id === ancestorId) {
+      return this.findNodeById(tree, descendantId) !== null
+    }
+
+    if (!tree.children) return false
+
+    for (const child of tree.children) {
+      if (this.isDescendant(child, ancestorId, descendantId)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  /**
+   * Move a node to a new parent and position
+   */
+  moveNodeInTree(
+    tree: TreeNode,
+    nodeId: string,
+    newParentId: string,
+    newIndex: number
+  ): boolean {
+    // Prevent moving root
+    if (nodeId === 'root') return false
+
+    // Find the node and its current parent
+    const nodeResult = this.findNodeById(tree, nodeId)
+    if (!nodeResult) return false
+
+    const { node, parent: oldParent } = nodeResult
+
+    // Find the new parent
+    const newParentResult = this.findNodeById(tree, newParentId)
+    if (!newParentResult) return false
+
+    const { node: newParent } = newParentResult
+
+    // Ensure new parent is a folder
+    if (newParent.type !== 'folder') return false
+
+    // Prevent moving a folder into itself or its descendants
+    if (node.type === 'folder' && this.isDescendant(tree, nodeId, newParentId)) {
+      return false
+    }
+
+    // Remove from old parent
+    if (oldParent && oldParent.children) {
+      const oldIndex = oldParent.children.findIndex((child) => child.id === nodeId)
+      if (oldIndex !== -1) {
+        oldParent.children.splice(oldIndex, 1)
+        // Reorder remaining children
+        oldParent.children.forEach((child, idx) => {
+          child.order = idx
+        })
+      }
+    }
+
+    // Add to new parent at specified index
+    if (!newParent.children) newParent.children = []
+
+    const insertIndex = Math.min(newIndex, newParent.children.length)
+    newParent.children.splice(insertIndex, 0, node)
+
+    // Reorder all children in new parent
+    newParent.children.forEach((child, idx) => {
+      child.order = idx
+    })
+
+    return true
+  }
+
+  /**
+   * Reorder children within a parent node
+   */
+  reorderChildrenInTree(tree: TreeNode, parentId: string, childIds: string[]): boolean {
+    // Find the parent node
+    const parentResult = this.findNodeById(tree, parentId)
+    if (!parentResult) return false
+
+    const { node: parent } = parentResult
+
+    if (!parent.children || parent.children.length === 0) return false
+
+    // Verify all child IDs exist and belong to this parent
+    const currentChildIds = parent.children.map((c) => c.id)
+    if (
+      childIds.length !== currentChildIds.length ||
+      !childIds.every((id) => currentChildIds.includes(id))
+    ) {
+      return false
+    }
+
+    // Create a map for quick lookup
+    const childMap = new Map(parent.children.map((child) => [child.id, child]))
+
+    // Reorder children based on provided order
+    parent.children = childIds.map((id, index) => {
+      const child = childMap.get(id)!
+      child.order = index
+      return child
+    })
+
+    return true
+  }
+
+  /**
    * Create a new project
    */
   async createProject(data: CreateProjectData): Promise<Project> {
@@ -193,6 +338,7 @@ export default class ProjectService {
     const notes = await Note.query()
       .where('projectId', projectId)
       .where('userId', userId)
+      .whereNot('name', '__LIBRARY_ITEMS_SYSTEM__') // Exclude system note
       .orderBy('createdAt', 'desc')
 
     return notes
@@ -212,6 +358,7 @@ export default class ProjectService {
       .select('id', 'name', 'createdAt')
       .where('projectId', projectId)
       .where('userId', userId)
+      .whereNot('name', '__LIBRARY_ITEMS_SYSTEM__') // Exclude system note
       .orderBy('createdAt', 'desc')
 
     return notesSummary
@@ -225,7 +372,6 @@ export default class ProjectService {
       .where('id', projectId)
       .where('userId', userId)
       .whereNull('deletedAt')
-      .preload('workflows')
       .preload('libraryItems')
       .first()
 
@@ -420,6 +566,7 @@ export default class ProjectService {
     const recentNotes = await Note.query()
       .where('project_id', projectId)
       .where('user_id', userId)
+      .whereNot('name', '__LIBRARY_ITEMS_SYSTEM__') // Exclude system note
       .select('id', 'name', 'content')
       .orderBy('updated_at', 'desc')
       .limit(20)
@@ -457,5 +604,244 @@ export default class ProjectService {
         size: item.size,
       })),
     }
+  }
+
+  /**
+   * Update project details (name, description, color)
+   */
+  async updateProject(
+    userId: string,
+    projectId: string,
+    data: { name?: string; description?: string | null; color?: string | null }
+  ): Promise<Project> {
+    const project = await this.authService.getProjectForUser(userId, projectId)
+
+    await project.merge(data).save()
+
+    return project
+  }
+
+  /**
+   * Delete a project and cascade delete all associated data
+   * This includes notes, flashcard sets, multiple choice sets, library items, etc.
+   */
+  async deleteProject(userId: string, projectId: string): Promise<void> {
+    // Verify authorization first (throws if user doesn't have access)
+    await this.authService.getProjectForUser(userId, projectId)
+
+    // Import database service for transactions
+    const db = (await import('@adonisjs/lucid/services/db')).default
+
+    // Use transaction to ensure all-or-nothing deletion
+    await db.transaction(async (trx) => {
+      // 1. Delete vector chunks for notes and library items in this project
+      await trx
+        .from('vector_chunks')
+        .whereIn('note_id', trx.from('notes').select('id').where('project_id', projectId))
+        .delete()
+
+      await trx
+        .from('vector_chunks')
+        .whereIn(
+          'library_item_id',
+          trx.from('library_items').select('id').where('project_id', projectId)
+        )
+        .delete()
+
+      // 2. Delete pivot table entries
+      await trx.from('project_starred_flashcards').where('project_id', projectId).delete()
+
+      await trx
+        .from('project_starred_multiple_choice_questions')
+        .where('project_id', projectId)
+        .delete()
+
+      await trx
+        .from('flashcard_set_notes')
+        .whereIn(
+          'flashcard_set_id',
+          trx.from('flashcard_sets').select('id').where('project_id', projectId)
+        )
+        .delete()
+
+      await trx
+        .from('flashcard_set_library_items')
+        .whereIn(
+          'flashcard_set_id',
+          trx.from('flashcard_sets').select('id').where('project_id', projectId)
+        )
+        .delete()
+
+      await trx
+        .from('multiple_choice_set_notes')
+        .whereIn(
+          'multiple_choice_set_id',
+          trx.from('multiple_choice_sets').select('id').where('project_id', projectId)
+        )
+        .delete()
+
+      await trx
+        .from('multiple_choice_set_library_items')
+        .whereIn(
+          'multiple_choice_set_id',
+          trx.from('multiple_choice_sets').select('id').where('project_id', projectId)
+        )
+        .delete()
+
+      // Free response sets pivot tables (if they exist)
+      const hasFreeResponseTables = await trx.schema.hasTable('free_response_sets')
+      if (hasFreeResponseTables) {
+        await trx
+          .from('free_response_set_notes')
+          .whereIn(
+            'free_response_set_id',
+            trx.from('free_response_sets').select('id').where('project_id', projectId)
+          )
+          .delete()
+
+        await trx
+          .from('free_response_set_library_items')
+          .whereIn(
+            'free_response_set_id',
+            trx.from('free_response_sets').select('id').where('project_id', projectId)
+          )
+          .delete()
+      }
+
+      // Note library items pivot
+      await trx
+        .from('note_library_items')
+        .whereIn('note_id', trx.from('notes').select('id').where('project_id', projectId))
+        .delete()
+
+      // Flashcard library items pivot
+      await trx
+        .from('flashcard_library_items')
+        .whereIn(
+          'flashcard_id',
+          trx.from('flashcards').select('id').where('project_id', projectId)
+        )
+        .delete()
+
+      // 3. Delete free response evaluations, questions, and sets
+      if (hasFreeResponseTables) {
+        await trx
+          .from('free_response_evaluations')
+          .whereIn(
+            'free_response_id',
+            trx
+              .from('free_responses')
+              .select('id')
+              .whereIn(
+                'free_response_set_id',
+                trx.from('free_response_sets').select('id').where('project_id', projectId)
+              )
+          )
+          .delete()
+
+        await trx
+          .from('free_responses')
+          .whereIn(
+            'free_response_set_id',
+            trx.from('free_response_sets').select('id').where('project_id', projectId)
+          )
+          .delete()
+
+        await trx.from('free_response_sets').where('project_id', projectId).delete()
+      }
+
+      // 4. Delete multiple choice questions and sets
+      await trx
+        .from('multiple_choice_questions')
+        .whereIn(
+          'multiple_choice_set_id',
+          trx.from('multiple_choice_sets').select('id').where('project_id', projectId)
+        )
+        .delete()
+
+      await trx.from('multiple_choice_sets').where('project_id', projectId).delete()
+
+      // 5. Delete flashcards and flashcard sets
+      await trx.from('flashcards').where('project_id', projectId).delete()
+
+      await trx.from('flashcard_sets').where('project_id', projectId).delete()
+
+      // 6. Delete study options for notes
+      await trx
+        .from('study_options')
+        .whereIn('note_id', trx.from('notes').select('id').where('project_id', projectId))
+        .delete()
+
+      // 7. Delete library items (project-specific only, not global)
+      await trx.from('library_items').where('project_id', projectId).delete()
+
+      // 8. Delete notes
+      await trx.from('notes').where('project_id', projectId).delete()
+
+      // 9. Delete todos (if table exists and has project_id)
+      const hasTodosTable = await trx.schema.hasTable('todos')
+      if (hasTodosTable) {
+        const hasTodosProjectId = await trx.schema.hasColumn('todos', 'project_id')
+        if (hasTodosProjectId) {
+          await trx.from('todos').where('project_id', projectId).delete()
+        }
+      }
+
+      // 12. Finally, soft delete the project itself
+      await trx.from('projects').where('id', projectId).update({
+        deleted_at: new Date(),
+      })
+    })
+
+    console.log(`✅ Project ${projectId} and all associated data deleted successfully`)
+  }
+
+  /**
+   * Move a node to a different location in the tree
+   */
+  async moveNode(
+    userId: string,
+    projectId: string,
+    nodeId: string,
+    newParentId: string,
+    newIndex: number
+  ): Promise<Project> {
+    const project = await this.authService.getProjectForUser(userId, projectId)
+
+    let folderTree = (project.folderTree as unknown as TreeNode) || this.initializeFolderTree()
+
+    const success = this.moveNodeInTree(folderTree, nodeId, newParentId, newIndex)
+
+    if (!success) {
+      throw new Error('Failed to move node. Invalid operation.')
+    }
+
+    await project.merge({ folderTree: folderTree as any }).save()
+
+    return project
+  }
+
+  /**
+   * Reorder children within a parent node
+   */
+  async reorderNodes(
+    userId: string,
+    projectId: string,
+    parentId: string,
+    childIds: string[]
+  ): Promise<Project> {
+    const project = await this.authService.getProjectForUser(userId, projectId)
+
+    let folderTree = (project.folderTree as unknown as TreeNode) || this.initializeFolderTree()
+
+    const success = this.reorderChildrenInTree(folderTree, parentId, childIds)
+
+    if (!success) {
+      throw new Error('Failed to reorder nodes. Invalid operation.')
+    }
+
+    await project.merge({ folderTree: folderTree as any }).save()
+
+    return project
   }
 }

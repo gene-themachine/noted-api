@@ -2,7 +2,6 @@ import { DateTime } from 'luxon'
 import { BaseModel, column, hasMany, belongsTo, manyToMany } from '@adonisjs/lucid/orm'
 import LibraryItem from '#models/library_item'
 import type { HasMany, ManyToMany } from '@adonisjs/lucid/types/relations'
-import Workflow from '#models/workflow'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 import User from '#models/user'
 import MultipleChoiceSet from './multiple_choice_set.js'
@@ -36,10 +35,6 @@ export default class Project extends BaseModel {
 
   @column.dateTime()
   declare deletedAt?: DateTime | null // Soft-delete
-
-  //delete this
-  @hasMany(() => Workflow)
-  declare workflows: HasMany<typeof Workflow>
 
   @hasMany(() => LibraryItem)
   declare libraryItems: HasMany<typeof LibraryItem>

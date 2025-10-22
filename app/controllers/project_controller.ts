@@ -22,6 +22,33 @@ export default class ProjectController {
     })
   )
 
+  static updateValidator = vine.compile(
+    vine.object({
+      name: vine.string().trim().minLength(1).maxLength(255).optional(),
+      description: vine.string().trim().optional(),
+      color: vine
+        .string()
+        .trim()
+        .regex(/^#[0-9A-Fa-f]{6}$/)
+        .optional(),
+    })
+  )
+
+  static moveNodeValidator = vine.compile(
+    vine.object({
+      nodeId: vine.string().trim().minLength(1),
+      newParentId: vine.string().trim().minLength(1),
+      newIndex: vine.number().min(0),
+    })
+  )
+
+  static reorderNodesValidator = vine.compile(
+    vine.object({
+      parentId: vine.string().trim().minLength(1),
+      childIds: vine.array(vine.string().trim().minLength(1)),
+    })
+  )
+
   // Create a new project/group
   async createNewProject({ request, response }: HttpContext) {
     try {
@@ -183,6 +210,157 @@ export default class ProjectController {
       }
       return response.internalServerError({
         message: 'Failed to retrieve project tools data',
+        error: error.message,
+      })
+    }
+  }
+
+  /**
+   * Update project details (name, description, color)
+   */
+  async updateProject({ request, response, params }: HttpContext) {
+    try {
+      const userId = (request as any)?.user?.id || (request as any)?.userId
+      const projectId = params.id
+      const payload = await request.validateUsing(ProjectController.updateValidator)
+
+      const project = await this.projectService.updateProject(userId, projectId, payload)
+
+      return response.ok({
+        message: 'Project updated successfully',
+        project: {
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          color: project.color,
+          userId: project.userId,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt,
+        },
+      })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Project not found' })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to update project',
+        error: error.message,
+      })
+    }
+  }
+
+  /**
+   * Delete a project and all associated data
+   */
+  async deleteProject({ request, response, params }: HttpContext) {
+    try {
+      const userId = (request as any)?.user?.id || (request as any)?.userId
+      const projectId = params.id
+
+      await this.projectService.deleteProject(userId, projectId)
+
+      return response.ok({
+        message: 'Project deleted successfully',
+      })
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Project not found' })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to delete project',
+        error: error.message,
+      })
+    }
+  }
+
+  /**
+   * Move a node to a different location in the tree
+   */
+  async moveNode({ request, response, params }: HttpContext) {
+    try {
+      const userId = (request as any)?.user?.id || (request as any)?.userId
+      const projectId = params.id
+      const payload = await request.validateUsing(ProjectController.moveNodeValidator)
+
+      await this.projectService.moveNode(
+        userId,
+        projectId,
+        payload.nodeId,
+        payload.newParentId,
+        payload.newIndex
+      )
+
+      return response.ok({
+        message: 'Node moved successfully',
+      })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Project not found' })
+      }
+
+      if (error.message.includes('Failed to move')) {
+        return response.badRequest({
+          message: error.message,
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to move node',
+        error: error.message,
+      })
+    }
+  }
+
+  /**
+   * Reorder children within a parent node
+   */
+  async reorderNodes({ request, response, params }: HttpContext) {
+    try {
+      const userId = (request as any)?.user?.id || (request as any)?.userId
+      const projectId = params.id
+      const payload = await request.validateUsing(ProjectController.reorderNodesValidator)
+
+      await this.projectService.reorderNodes(userId, projectId, payload.parentId, payload.childIds)
+
+      return response.ok({
+        message: 'Nodes reordered successfully',
+      })
+    } catch (error) {
+      if (error instanceof vineErrors.E_VALIDATION_ERROR) {
+        return response.badRequest({
+          message: 'Validation failed',
+          errors: error.messages,
+        })
+      }
+
+      if (error.message.includes('not found')) {
+        return response.notFound({ message: 'Project not found' })
+      }
+
+      if (error.message.includes('Failed to reorder')) {
+        return response.badRequest({
+          message: error.message,
+        })
+      }
+
+      return response.internalServerError({
+        message: 'Failed to reorder nodes',
         error: error.message,
       })
     }
