@@ -1,3 +1,5 @@
+import { MultipleChoiceResponse } from '#types/ai.types'
+
 export function createMultipleChoicePrompt(context: string): string {
   return `
 Based on the following context, generate a set of 10-15 challenging multiple-choice questions.
@@ -19,9 +21,4 @@ ${context}
 `
 }
 
-export interface MultipleChoiceResponse {
-  questions: Array<{
-    question: string
-    answer: string
-  }>
-}
+export type { MultipleChoiceResponse }

@@ -43,10 +43,6 @@ export default class SupabaseAuthMiddleware {
       ;(ctx.request as any).userId = userId
       ;(ctx.request as any).user = user
 
-      if (this.isDevelopment) {
-        console.log('✅ Auth successful:', { userId, supabaseUid: user.supabaseUid })
-      }
-
       await next()
     } catch (error: any) {
       const errorMsg = error?.message || 'Unknown auth error'

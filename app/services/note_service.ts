@@ -3,29 +3,7 @@ import StudyOptions from '#models/study_options'
 import LibraryItem from '#models/library_item'
 import AuthorizationService from '#services/authorization_service'
 import ProjectService from '#services/project_service'
-
-interface CreateNoteData {
-  projectId: string
-  name: string
-  content?: string
-  folderPath?: string[]
-  userId: string
-}
-
-interface UpdateNoteData {
-  name?: string
-  content?: string
-}
-
-interface StudyOptionsData {
-  flashcard?: 'queued' | 'completed' | 'failed' | null
-  blurtItOut?: 'queued' | 'completed' | 'failed' | null
-  multipleChoice?: 'queued' | 'completed' | 'failed' | null
-  fillInTheBlank?: 'queued' | 'completed' | 'failed' | null
-  matching?: 'queued' | 'completed' | 'failed' | null
-  shortAnswer?: 'queued' | 'completed' | 'failed' | null
-  essay?: 'queued' | 'completed' | 'failed' | null
-}
+import { CreateNoteData, UpdateNoteData, StudyOptionsData } from '#types/note.types'
 
 export default class NoteService {
   private authService: AuthorizationService

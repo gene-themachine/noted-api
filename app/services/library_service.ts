@@ -3,27 +3,7 @@ import AuthorizationService from '#services/authorization_service'
 import { getPresignedUrl, getPresignedViewUrl } from '../utils/s3.js'
 import { DateTime } from 'luxon'
 import { randomUUID } from 'node:crypto'
-
-interface CreateLibraryItemData {
-  projectId: string
-  key: string
-  fileName: string
-  fileType: string
-  size: number
-  isGlobal?: boolean
-  userId: string
-}
-
-interface PresignedUrlData {
-  fileName: string
-  fileType: string
-}
-
-interface PresignedUrlResponse {
-  presignedUrl: string
-  key: string
-  expiresIn: number
-}
+import { CreateLibraryItemData, PresignedUrlData, PresignedUrlResponse } from '#types/library.types'
 
 export default class LibraryService {
   private authService: AuthorizationService

@@ -31,15 +31,6 @@ export default await Env.create(new URL('../', import.meta.url), {
 
   /*
   |----------------------------------------------------------
-  | Variables for configuring Redis
-  |----------------------------------------------------------
-  */
-  REDIS_HOST: Env.schema.string({ format: 'host' }),
-  REDIS_PORT: Env.schema.number(),
-  REDIS_PASSWORD: Env.schema.string.optional(),
-
-  /*
-  |----------------------------------------------------------
   | Variables for configuring AWS S3
   |----------------------------------------------------------
   */
@@ -73,6 +64,15 @@ export default await Env.create(new URL('../', import.meta.url), {
   EMBEDDING_MODEL: Env.schema.string.optional(),
   VECTOR_CHUNK_SIZE: Env.schema.number.optional(),
   VECTOR_CHUNK_OVERLAP: Env.schema.number.optional(),
+
+  /*
+  |----------------------------------------------------------
+  | Variables for Supabase authentication
+  |----------------------------------------------------------
+  */
+  SUPABASE_JWKS_URL: Env.schema.string(),
+  SUPABASE_JWT_ISS: Env.schema.string(),
+  SUPABASE_JWT_AUD: Env.schema.string(),
 
   /*
   |----------------------------------------------------------

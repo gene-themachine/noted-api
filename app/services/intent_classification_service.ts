@@ -1,19 +1,5 @@
 import { getOpenAIClient } from '../utils/openai.js'
-
-export interface IntentClassificationResult {
-  intent: 'in_domain' | 'out_of_domain' | 'hybrid'
-  confidence: number
-  domain_topics?: string[]
-  suggested_pipeline: 'rag_only' | 'external_only' | 'hybrid'
-  reasoning: string
-}
-
-export interface DomainContext {
-  noteId: string
-  attachedDocuments: string[]
-  noteContent?: string
-  projectDomain?: string
-}
+import type { IntentClassificationResult, DomainContext } from '#types/qa.types'
 
 /**
  * Intent Classification Service

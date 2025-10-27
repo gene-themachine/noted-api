@@ -1,4 +1,5 @@
-import NativePineconeService, { type VectorRecord } from './native_pinecone_service.js'
+import NativePineconeService from './native_pinecone_service.js'
+import type { VectorRecord } from '#types/vector.types'
 import Note from '#models/note'
 import LibraryItem from '#models/library_item'
 import VectorChunk from '#models/vector_chunk'
@@ -7,11 +8,7 @@ import { downloadAndExtractText } from '../utils/pdf_extractor.js'
 import { getEmbeddings } from '../utils/openai.js'
 import { v4 as uuidv4 } from 'uuid'
 import { DateTime } from 'luxon'
-
-interface TextChunk {
-  content: string
-  index: number
-}
+import { TextChunk } from '#types/common.types'
 
 /**
  * Native vector service using direct SDK calls without LangChain

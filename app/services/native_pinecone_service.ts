@@ -1,19 +1,7 @@
 import { Pinecone } from '@pinecone-database/pinecone'
 import env from '#start/env'
 import { getEmbedding } from '../utils/openai.js'
-
-export interface NativeSearchResult {
-  id: string
-  score: number
-  metadata: Record<string, any>
-  content?: string
-}
-
-export interface VectorRecord {
-  id: string
-  values: number[]
-  metadata: Record<string, any>
-}
+import type { NativeSearchResult, VectorRecord } from '#types/vector.types'
 
 /**
  * Native Pinecone service using direct SDK without LangChain

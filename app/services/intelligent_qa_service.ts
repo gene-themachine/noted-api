@@ -1,24 +1,14 @@
-import IntentClassificationService, {
-  IntentClassificationResult,
-  DomainContext,
-} from './intent_classification_service.js'
+import IntentClassificationService from './intent_classification_service.js'
 import NativeQAService from './native_qa_service.js'
 import ExternalKnowledgeService from './external_knowledge_service.js'
 import HybridQAService from './hybrid_qa_service.js'
 import Note from '../models/note.js'
 import LibraryItem from '../models/library_item.js'
-
-export interface IntelligentQAResponse {
-  answer: string
-  sources: Array<{
-    type: 'document' | 'external'
-    content: string
-    metadata?: any
-  }>
-  pipeline_used: 'rag_only' | 'external_only' | 'hybrid'
-  intent_classification: IntentClassificationResult
-  confidence: number
-}
+import type {
+  IntentClassificationResult,
+  DomainContext,
+  IntelligentQAResponse,
+} from '#types/qa.types'
 
 /**
  * Intelligent QA Service

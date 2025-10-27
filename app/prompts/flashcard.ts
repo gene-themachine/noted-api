@@ -1,3 +1,5 @@
+import { FlashcardResponse } from '#types/ai.types'
+
 export function createFlashcardPrompt(combinedContent: string): string {
   return `
 You are an expert educational content creator. Your task is to generate high-quality flashcards from the provided content.
@@ -32,9 +34,4 @@ Generate the flashcards now:
 `
 }
 
-export interface FlashcardResponse {
-  flashcards: Array<{
-    term: string
-    definition: string
-  }>
-}
+export type { FlashcardResponse }

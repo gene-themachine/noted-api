@@ -1,17 +1,6 @@
 import Todo from '#models/todo'
 import { DateTime } from 'luxon'
-
-interface CreateTodoData {
-  title: string
-  dueDate?: DateTime | string
-  userId: string
-}
-
-interface UpdateTodoData {
-  title?: string
-  dueDate?: DateTime | string | null
-  isCompleted?: boolean
-}
+import { CreateTodoData, UpdateTodoData } from '#types/todo.types'
 
 export default class TodoService {
   constructor() {

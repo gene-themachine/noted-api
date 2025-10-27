@@ -1,10 +1,5 @@
 import env from '#start/env'
-
-interface ValidationResult {
-  isValid: boolean
-  errors: string[]
-  warnings: string[]
-}
+import { ValidationResult } from '#types/common.types'
 
 /**
  * Environment Variable Validator
@@ -26,13 +21,7 @@ export class EnvironmentValidator {
     'DB_DATABASE',
   ]
 
-  private static optionalVars = [
-    'REDIS_HOST',
-    'REDIS_PORT',
-    'REDIS_PASSWORD',
-    'OPENAI_API_KEY',
-    'PINECONE_API_KEY',
-  ]
+  private static optionalVars = ['OPENAI_API_KEY', 'PINECONE_API_KEY']
 
   /**
    * Validate all required environment variables

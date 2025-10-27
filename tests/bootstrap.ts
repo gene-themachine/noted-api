@@ -1,38 +1,52 @@
+/**
+ * Test bootstrap file
+ * Sets up the testing environment for Japa tests
+ */
+
 import { assert } from '@japa/assert'
 import { apiClient } from '@japa/api-client'
-import app from '@adonisjs/core/services/app'
 import type { Config } from '@japa/runner/types'
-import { pluginAdonisJS } from '@japa/plugin-adonisjs'
-import testUtils from '@adonisjs/core/services/test_utils'
 
 /**
- * This file is imported by the "bin/test.ts" entrypoint file
+ * Runner hooks to execute before and after running tests
  */
+export const runnerHooks: Pick<Config, 'setup' | 'teardown'> = {
+  /**
+   * Setup hooks run before starting the test runner
+   */
+  setup: [
+    async () => {
+      // Add any global test setup here
+      // For example: seeding the database, clearing cache, etc.
+    },
+  ],
 
-/**
- * Configure Japa plugins in the plugins array.
- * Learn more - https://japa.dev/docs/runner-config#plugins-optional
- */
-export const plugins: Config['plugins'] = [assert(), apiClient(), pluginAdonisJS(app)]
-
-/**
- * Configure lifecycle function to run before and after all the
- * tests.
- *
- * The setup functions are executed before all the tests
- * The teardown functions are executed after all the tests
- */
-export const runnerHooks: Required<Pick<Config, 'setup' | 'teardown'>> = {
-  setup: [],
-  teardown: [],
+  /**
+   * Teardown hooks run after all tests have finished
+   */
+  teardown: [
+    async () => {
+      // Add any global cleanup here
+      // For example: closing database connections, clearing test data, etc.
+    },
+  ],
 }
 
 /**
- * Configure suites by tapping into the test suite instance.
- * Learn more - https://japa.dev/docs/test-suites#lifecycle-hooks
+ * Configure plugins for Japa
  */
-export const configureSuite: Config['configureSuite'] = (suite) => {
-  if (['browser', 'functional', 'e2e'].includes(suite.name)) {
-    return suite.setup(() => testUtils.httpServer().start())
-  }
-}
+export const plugins: Config['plugins'] = [assert(), apiClient()]
+
+/**
+ * Test suites configuration
+ */
+export const testSuites = [
+  {
+    name: 'unit',
+    files: ['tests/unit/**/*.spec.ts'],
+  },
+  {
+    name: 'functional',
+    files: ['tests/functional/**/*.spec.ts'],
+  },
+]

@@ -1,19 +1,7 @@
 import NativeVectorService from './native_vector_service.js'
-import ExternalKnowledgeService, {
-  ExternalKnowledgeResponse,
-} from './external_knowledge_service.js'
+import ExternalKnowledgeService from './external_knowledge_service.js'
 import { getOpenAIClient } from '../utils/openai.js'
-
-export interface HybridQAResponse {
-  answer: string
-  sources: Array<{
-    type: 'document' | 'external'
-    content: string
-    metadata?: any
-  }>
-  method: 'hybrid'
-  confidence: number
-}
+import { HybridQAResponse, ExternalKnowledgeResponse } from '#types/qa.types'
 
 /**
  * Hybrid QA Service
@@ -193,6 +181,8 @@ ${query}
     onChunk: (chunk: string, isComplete: boolean) => void,
     domain_hints?: string[]
   ): Promise<HybridQAResponse> {
+    let completed = false
+
     try {
       console.log('🔄 Starting streaming hybrid QA generation...')
 
@@ -242,6 +232,8 @@ ${query}
 
       let fullAnswer = ''
       for await (const chunk of stream) {
+        if (completed) break // Safety check
+
         const content = chunk.choices[0]?.delta?.content || ''
         if (content) {
           fullAnswer += content
@@ -249,7 +241,11 @@ ${query}
         }
       }
 
-      onChunk('', true) // Signal completion
+      // Only send completion signal once
+      if (!completed) {
+        completed = true
+        onChunk('', true)
+      }
 
       return {
         answer: fullAnswer,
@@ -270,11 +266,16 @@ ${query}
     } catch (error) {
       console.error('❌ Streaming hybrid QA generation failed:', error)
 
-      const errorMessage = 'I encountered an error while generating your answer. Please try again.'
-      onChunk(errorMessage, true)
+      // Only send error if not already completed
+      if (!completed) {
+        completed = true
+        const errorMessage =
+          'I encountered an error while generating your answer. Please try again.'
+        onChunk(errorMessage, true)
+      }
 
       return {
-        answer: errorMessage,
+        answer: 'I encountered an error while generating your answer. Please try again.',
         sources: [],
         method: 'hybrid',
         confidence: 0.0,

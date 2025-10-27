@@ -2,6 +2,7 @@ import { HttpContext } from '@adonisjs/core/http'
 import vine from '@vinejs/vine'
 import NativeQAService from '#services/native_qa_service'
 import IntelligentQAService from '#services/intelligent_qa_service'
+import { jwksService } from '#services/jwks_service'
 
 const generateQAValidator = vine.compile(
   vine.object({
@@ -151,12 +152,12 @@ export default class QAController {
    * Stream Q&A generation using Server-Sent Events (auth handled by middleware)
    */
   async streamSSE({ params, request, response }: HttpContext) {
-    const userId = (request as any)?.userId
     const { noteId } = params
 
     // Validate request parameters from query string
     const qaBlockId = request.qs().qaBlockId as string
     const question = request.qs().question as string
+    const authToken = request.qs().auth_token as string
 
     if (!qaBlockId || !question) {
       response.response.writeHead(400, {
@@ -174,16 +175,42 @@ export default class QAController {
       return
     }
 
+    // Manual JWT authentication for SSE endpoints
+    let userId: string
+    try {
+      const { userId: authenticatedUserId } = await jwksService.verifyTokenAndGetUser(authToken)
+      userId = authenticatedUserId
+    } catch (error: any) {
+      console.error('❌ Authentication failed:', error.message)
+      response.response.writeHead(401, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      })
+      response.response.write(
+        `data: ${JSON.stringify({
+          type: 'error',
+          data: {
+            error: 'Authentication failed',
+            message: error.message,
+          },
+        })}\n\n`
+      )
+      response.response.end()
+      return
+    }
+
     // Set up SSE headers with anti-buffering
     response.response.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Transfer-Encoding': 'chunked',
       'X-Accel-Buffering': 'no',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Cache-Control',
     })
+    // Flush headers immediately to establish connection
+    response.response.flushHeaders()
 
     let accumulatedAnswer = ''
     const startTime = Date.now()
@@ -261,41 +288,6 @@ export default class QAController {
   }
 
   /**
-   * Simple test endpoint to debug streaming
-   */
-  async test({ response }: HttpContext) {
-    console.log('🧪 Test endpoint called')
-
-    try {
-      const testResult = await this.qaService.generateQAStreaming(
-        {
-          noteId: '550e8400-e29b-41d4-a716-446655440000',
-          userId: '550e8400-e29b-41d4-a716-446655440001',
-          qaBlockId: 'test-block-id',
-          question: 'What is 2+2?',
-        },
-        (chunk: string, isComplete: boolean) => {
-          console.log('🧪 Test callback received:', { chunk, isComplete })
-        }
-      )
-
-      console.log('🧪 Test result:', testResult)
-
-      return response.ok({
-        success: true,
-        message: 'Test completed',
-        result: testResult,
-      })
-    } catch (error) {
-      console.error('🧪 Test failed:', error)
-      return response.internalServerError({
-        success: false,
-        error: error.message,
-      })
-    }
-  }
-
-  /**
    * Generate an intelligent answer using intent classification and multi-pipeline routing
    */
   async generateIntelligent({ params, request, response }: HttpContext) {
@@ -335,9 +327,8 @@ export default class QAController {
    * Stream intelligent answer generation (auth handled by middleware)
    */
   async streamIntelligent({ params, request, response }: HttpContext) {
-    const userId = (request as any)?.userId
     const { noteId } = params
-    const { qaBlockId, question } = request.qs()
+    const { qaBlockId, question, auth_token: authToken } = request.qs()
 
     // Validate query parameters
     if (!qaBlockId || !question) {
@@ -360,6 +351,33 @@ export default class QAController {
       return
     }
 
+    // Manual JWT authentication for SSE endpoints
+    let userId: string
+    try {
+      const { userId: authenticatedUserId } = await jwksService.verifyTokenAndGetUser(
+        authToken as string
+      )
+      userId = authenticatedUserId
+    } catch (error: any) {
+      console.error('❌ Authentication failed:', error.message)
+      response.response.writeHead(401, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      })
+      response.response.write(
+        `data: ${JSON.stringify({
+          type: 'error',
+          data: {
+            error: 'Authentication failed',
+            message: error.message,
+          },
+        })}\n\n`
+      )
+      response.response.end()
+      return
+    }
+
     try {
       console.log(`🔄 Starting intelligent streaming Q&A for block: ${qaBlockId}`)
 
@@ -368,11 +386,12 @@ export default class QAController {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
-        'Transfer-Encoding': 'chunked',
         'X-Accel-Buffering': 'no',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Cache-Control',
       })
+      // Flush headers immediately to establish connection
+      response.response.flushHeaders()
 
       // Send an initial status event quickly so clients establish the stream
       response.response.write(
@@ -385,7 +404,9 @@ export default class QAController {
       // Keep-alive ping to prevent timeouts while classifying or retrieving
       const keepAlive = setInterval(() => {
         try {
-          response.response.write(': keep-alive\n\n')
+          response.response.write(
+            `data: ${JSON.stringify({ type: 'ping', data: { timestamp: Date.now() } })}\n\n`
+          )
         } catch {}
       }, 15000)
 
@@ -396,6 +417,11 @@ export default class QAController {
         userId,
         question,
         (chunk: string, isComplete: boolean) => {
+          // Prevent processing after completion
+          if (completed) {
+            return
+          }
+
           const eventData = JSON.stringify({
             type: 'chunk',
             data: {

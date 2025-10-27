@@ -262,7 +262,7 @@ export default class FlashcardController {
     }
   }
 
-  // Starred flashcards methods
+  // Retrieve starred flashcards methods
   async getProjectStarredFlashcards({ params, response, request }: HttpContext) {
     try {
       const user = (request as any)?.user || { id: (request as any)?.userId }
@@ -294,6 +294,7 @@ export default class FlashcardController {
     }
   }
 
+  // Star a flashcard // unstar a flashcard methods
   async starFlashcard({ params, response, request }: HttpContext) {
     try {
       const user = (request as any)?.user || { id: (request as any)?.userId }

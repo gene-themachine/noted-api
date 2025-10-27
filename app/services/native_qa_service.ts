@@ -1,19 +1,7 @@
 import NativeVectorService from './native_vector_service.js'
 import Note from '#models/note'
 import { getCompletion, getStreamingCompletion } from '../utils/openai.js'
-
-interface QAData {
-  noteId: string
-  userId: string
-  qaBlockId: string
-  question: string
-}
-
-interface QAResponse {
-  success: boolean
-  answer?: string
-  error?: string
-}
+import { QAData, QAResponse } from '#types/common.types'
 
 /**
  * Native QA service using direct SDK calls without LangChain
@@ -120,7 +108,7 @@ export default class NativeQAService {
     // Generate citations list
     const citations = this.generateCitations(searchResults)
 
-    const prompt = `Answer this question using only the provided documents. Be brief and direct (2-3 sentences max). Include inline citations where appropriate.
+    const prompt = `Answer this question using only the provided documents. Be brief and direct (2-3 sentences max). Do NOT include any citation numbers like [1], [2], etc. in your answer - just write naturally.
 
 DOCUMENTS:
 ${context}
@@ -164,7 +152,7 @@ ANSWER:`
     // Generate citations list
     const citations = this.generateCitations(searchResults)
 
-    const prompt = `Answer this question using only the provided documents. Be brief and direct (2-3 sentences max). Include inline citations where appropriate.
+    const prompt = `Answer this question using only the provided documents. Be brief and direct (2-3 sentences max). Do NOT include any citation numbers like [1], [2], etc. in your answer - just write naturally.
 
 DOCUMENTS:
 ${context}
@@ -174,20 +162,31 @@ QUESTION: ${question}
 ANSWER:`
 
     const result = await getStreamingCompletion(prompt, 'gpt-4o', (chunk: string) => {
+      console.log(`📤 Streaming AI chunk: "${chunk.substring(0, 30)}..."`)
       onChunk(chunk, false)
     })
 
-    // Send citations after the main answer
+    console.log(`✅ AI streaming complete. Response length: ${result.response.length}`)
+    console.log(`📚 Citations to send: "${citations}"`)
+
+    // Send citations after the main answer via streaming
     if (citations) {
+      console.log(`📤 Streaming citations chunk`)
       onChunk(`\n\n${citations}`, false)
     }
 
+    // Signal completion
+    console.log(`🏁 Sending completion signal`)
     onChunk('', true)
 
-    const fullAnswer = citations
-      ? `${result.response.trim()}\n\n${citations}`
-      : result.response.trim()
-    return fullAnswer
+    // IMPORTANT: Return ONLY the answer without citations
+    // Citations are already sent via onChunk above, so don't include them in return value
+    // Otherwise they would be duplicated (once from streaming, once from return value)
+    const finalReturn = result.response.trim()
+    console.log(
+      `🔙 Returning to controller: "${finalReturn.substring(0, 50)}..." (length: ${finalReturn.length})`
+    )
+    return finalReturn
   }
 
   /**

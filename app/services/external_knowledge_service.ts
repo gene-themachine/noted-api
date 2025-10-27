@@ -1,18 +1,5 @@
 import { getOpenAIClient } from '../utils/openai.js'
-
-export interface ExternalKnowledgeResponse {
-  answer: string
-  sources: string[]
-  confidence: number
-  method: 'web_search' | 'general_ai' | 'academic_search'
-}
-
-export interface SearchResult {
-  title: string
-  content: string
-  url?: string
-  relevance_score: number
-}
+import type { ExternalKnowledgeResponse } from '#types/qa.types'
 
 /**
  * External Knowledge Service
@@ -77,6 +64,8 @@ export default class ExternalKnowledgeService {
     onChunk: (chunk: string, isComplete: boolean) => void,
     domain_hints?: string[]
   ): Promise<ExternalKnowledgeResponse> {
+    let completed = false
+
     try {
       const system = this.buildExternalKnowledgeSystemPrompt(domain_hints)
 
@@ -93,6 +82,8 @@ export default class ExternalKnowledgeService {
 
       let answer = ''
       for await (const part of stream) {
+        if (completed) break // Safety check
+
         const content = part.choices[0]?.delta?.content || ''
         if (content) {
           answer += content
@@ -100,7 +91,11 @@ export default class ExternalKnowledgeService {
         }
       }
 
-      onChunk('', true)
+      // Only send completion signal once
+      if (!completed) {
+        completed = true
+        onChunk('', true)
+      }
 
       return {
         answer: answer || 'Unable to generate answer',
@@ -110,11 +105,19 @@ export default class ExternalKnowledgeService {
       }
     } catch (error) {
       console.error('❌ External knowledge streaming failed:', error)
-      const fallback =
-        'I apologize, but I cannot access external knowledge sources at the moment. Please try rephrasing your question.'
-      onChunk(fallback, true)
+
+      // Only send error if not already completed
+      if (!completed) {
+        completed = true
+        const fallback =
+          'I apologize, but I cannot access external knowledge sources at the moment. Please try rephrasing your question.'
+        onChunk(fallback, true)
+      }
+
       return {
-        answer: fallback,
+        answer: completed
+          ? 'Error occurred during streaming'
+          : 'I apologize, but I cannot access external knowledge sources at the moment. Please try rephrasing your question.',
         sources: [],
         confidence: 0.0,
         method: 'general_ai',

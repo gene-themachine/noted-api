@@ -1,32 +1,6 @@
 import Project from '#models/project'
 import AuthorizationService from '#services/authorization_service'
-
-interface TreeNode {
-  id: string
-  name: string
-  type: 'folder' | 'note'
-  noteId?: string
-  children?: TreeNode[]
-  order?: number
-}
-
-interface CreateProjectData {
-  name: string
-  description?: string | null
-  color?: string | null
-  userId: string
-}
-
-interface ProjectWithTree {
-  id: string
-  name: string
-  description: string | null
-  color: string | null
-  userId: string
-  folderTree: TreeNode
-  createdAt: Date
-  updatedAt: Date
-}
+import { TreeNode, CreateProjectData, ProjectWithTree } from '#types/project.types'
 
 export default class ProjectService {
   private authService: AuthorizationService
