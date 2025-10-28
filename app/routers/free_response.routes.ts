@@ -1,6 +1,6 @@
 import router from '@adonisjs/core/services/router'
 
-const FreeResponseController = () => import('#controllers/free_response_controller')
+const FreeResponseController = () => import('#controllers/studyTools/free_response_controller')
 
 /**
  * Free Response routes - handles free response question sets and AI evaluations

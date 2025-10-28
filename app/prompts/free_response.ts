@@ -1,3 +1,49 @@
+/**
+ * Free Response Generation & Evaluation Prompts
+ *
+ * Used by: FreeResponseService (app/services/studyTools/free_response_service.ts)
+ * Purpose: Generate free response questions and evaluate student answers using AI
+ *
+ * Two main functions:
+ * 1. Generation: Create free response questions with detailed grading rubrics
+ * 2. Evaluation: Grade student answers against rubrics with specific feedback
+ *
+ * Process (Generation):
+ * 1. User selects notes/library items to generate questions from
+ * 2. Content is fetched and combined by ContentFetcherService
+ * 3. GPT-4o generates 5-10 free response questions with 4-point rubrics
+ * 4. Each question has detailed grading criteria focused on content knowledge
+ *
+ * Process (Evaluation):
+ * 1. Student submits an answer to a free response question
+ * 2. GPT-4o-mini evaluates the answer against the rubric
+ * 3. Returns scored rubric (4 criteria × 1 point each), feedback, and suggestions
+ * 4. Evaluation is stored for review history
+ *
+ * Models:
+ * - Generation: gpt-4o (requires higher quality for rubric creation)
+ * - Evaluation: gpt-4o-mini (faster, cheaper, sufficient for grading)
+ */
+
+/**
+ * Create free response question generation prompt
+ *
+ * @param content - Combined text from notes and PDF extractions
+ * @param setName - Name of the question set for context
+ * @returns Prompt instructing GPT to generate free response questions with rubrics
+ *
+ * Output format:
+ * [{
+ *   question: string,
+ *   answer: string (model answer, 2-4 sentences),
+ *   rubric: [
+ *     { criterion: "Content-specific criterion", points: 1 },
+ *     { criterion: "Another specific criterion", points: 1 },
+ *     { criterion: "Third criterion", points: 1 },
+ *     { criterion: "Fourth criterion", points: 1 }
+ *   ]
+ * }, ...]
+ */
 export function createFreeResponsePrompt(content: string, setName: string): string {
   return `You are an expert educator tasked with creating high-quality free response questions with detailed rubrics for studying. Your goal is to create questions that promote deep understanding and critical thinking with clear grading criteria.
 
@@ -72,6 +118,33 @@ Examples of BAD criteria (generic):
 Make each criterion specific to what knowledge the question is testing.`
 }
 
+/**
+ * Create free response evaluation prompt
+ *
+ * @param question - The original free response question
+ * @param expectedAnswer - Model answer (what a good answer should include)
+ * @param userAnswer - The student's submitted answer to evaluate
+ * @param rubric - Array of 4 grading criteria with point values
+ * @returns Prompt instructing GPT to grade the answer and provide feedback
+ *
+ * Output format:
+ * {
+ *   totalScore: number (0-4),
+ *   percentage: number (0-100),
+ *   isCorrect: boolean (true if score >= 3),
+ *   criteriaScores: [
+ *     {
+ *       criterion: string,
+ *       pointsEarned: 0 | 1,
+ *       pointsPossible: 1,
+ *       feedback: string (specific feedback with ✓ or ✗)
+ *     }, ...
+ *   ],
+ *   overallFeedback: string (comprehensive summary comparing to expected answer),
+ *   keyStrengths: string[] (specific things the student did well),
+ *   areasForImprovement: string[] (specific gaps compared to model answer)
+ * }
+ */
 export function createFreeResponseEvaluationPrompt(
   question: string,
   expectedAnswer: string,

@@ -1,6 +1,19 @@
+/**
+ * Todo Controller
+ *
+ * Manages user to-do items with standard CRUD operations:
+ * - Create, read, update, delete todos
+ * - Toggle completion status
+ * - Due date tracking
+ *
+ * Simple controller with no complex relationships.
+ * Todos are user-scoped (not project-scoped).
+ */
+
 import type { HttpContext } from '@adonisjs/core/http'
 import vine from '@vinejs/vine'
 import TodoService from '#services/todo_service'
+import { isNotFoundError } from './helpers.js'
 
 export default class TodoController {
   private todoService: TodoService
@@ -27,18 +40,18 @@ export default class TodoController {
   /**
    * Get all todos for the authenticated user
    */
-  async index({ request, response }: HttpContext) {
+  async index(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const todos = await this.todoService.getUserTodos(user.id)
+      const userId = ctx.userId!
+      const todos = await this.todoService.getUserTodos(userId)
 
-      return response.ok({
+      return ctx.response.ok({
         success: true,
         data: todos,
       })
     } catch (error) {
       console.error('❌ Error fetching todos:', error)
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         success: false,
         message: 'Failed to fetch todos',
       })
@@ -48,25 +61,25 @@ export default class TodoController {
   /**
    * Create a new todo
    */
-  async store({ request, response }: HttpContext) {
+  async store(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const payload = await request.validateUsing(TodoController.createValidator)
+      const userId = ctx.userId!
+      const payload = await ctx.request.validateUsing(TodoController.createValidator)
 
       const todo = await this.todoService.createTodo({
         title: payload.title,
         dueDate: payload.dueDate,
-        userId: user.id,
+        userId,
       })
 
-      return response.created({
+      return ctx.response.created({
         success: true,
         data: todo,
         message: 'Todo created successfully',
       })
     } catch (error) {
       console.error('❌ Error creating todo:', error)
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         success: false,
         message: 'Failed to create todo',
       })
@@ -76,26 +89,26 @@ export default class TodoController {
   /**
    * Get a specific todo by ID
    */
-  async show({ params, request, response }: HttpContext) {
+  async show(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { id } = params
+      const userId = ctx.userId!
+      const { id } = ctx.params
 
-      const todo = await this.todoService.getTodoById(id, user.id)
+      const todo = await this.todoService.getTodoById(id, userId)
 
-      return response.ok({
+      return ctx.response.ok({
         success: true,
         data: todo,
       })
     } catch (error) {
       console.error('❌ Error fetching todo:', error)
-      if (error.code === 'E_ROW_NOT_FOUND') {
-        return response.notFound({
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({
           success: false,
           message: 'Todo not found',
         })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         success: false,
         message: 'Failed to fetch todo',
       })
@@ -103,30 +116,30 @@ export default class TodoController {
   }
 
   /**
-   * Update a todo
+   * Update a todo's title, due date, or completion status
    */
-  async update({ params, request, response }: HttpContext) {
+  async update(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { id } = params
-      const payload = await request.validateUsing(TodoController.updateValidator)
+      const userId = ctx.userId!
+      const { id } = ctx.params
+      const payload = await ctx.request.validateUsing(TodoController.updateValidator)
 
-      const todo = await this.todoService.updateTodo(id, payload, user.id)
+      const todo = await this.todoService.updateTodo(id, payload, userId)
 
-      return response.ok({
+      return ctx.response.ok({
         success: true,
         data: todo,
         message: 'Todo updated successfully',
       })
     } catch (error) {
       console.error('❌ Error updating todo:', error)
-      if (error.code === 'E_ROW_NOT_FOUND') {
-        return response.notFound({
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({
           success: false,
           message: 'Todo not found',
         })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         success: false,
         message: 'Failed to update todo',
       })
@@ -136,26 +149,26 @@ export default class TodoController {
   /**
    * Delete a todo
    */
-  async destroy({ params, request, response }: HttpContext) {
+  async destroy(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { id } = params
+      const userId = ctx.userId!
+      const { id } = ctx.params
 
-      await this.todoService.deleteTodo(id, user.id)
+      await this.todoService.deleteTodo(id, userId)
 
-      return response.ok({
+      return ctx.response.ok({
         success: true,
         message: 'Todo deleted successfully',
       })
     } catch (error) {
       console.error('❌ Error deleting todo:', error)
-      if (error.code === 'E_ROW_NOT_FOUND') {
-        return response.notFound({
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({
           success: false,
           message: 'Todo not found',
         })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         success: false,
         message: 'Failed to delete todo',
       })
@@ -163,29 +176,29 @@ export default class TodoController {
   }
 
   /**
-   * Toggle todo completion status
+   * Toggle todo completion status (completed ↔ incomplete)
    */
-  async toggle({ params, request, response }: HttpContext) {
+  async toggle(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { id } = params
+      const userId = ctx.userId!
+      const { id } = ctx.params
 
-      const todo = await this.todoService.toggleTodoComplete(id, user.id)
+      const todo = await this.todoService.toggleTodoComplete(id, userId)
 
-      return response.ok({
+      return ctx.response.ok({
         success: true,
         data: todo,
         message: 'Todo status updated successfully',
       })
     } catch (error) {
       console.error('❌ Error toggling todo:', error)
-      if (error.code === 'E_ROW_NOT_FOUND') {
-        return response.notFound({
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({
           success: false,
           message: 'Todo not found',
         })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         success: false,
         message: 'Failed to update todo status',
       })

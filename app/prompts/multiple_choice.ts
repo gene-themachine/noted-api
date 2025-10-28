@@ -1,5 +1,35 @@
+/**
+ * Multiple Choice Generation Prompts
+ *
+ * Used by: MultipleChoiceService (app/services/studyTools/multiple_choice_service.ts)
+ * Purpose: Generate multiple choice quiz questions from note content and PDFs
+ *
+ * Process:
+ * 1. User selects notes/library items to generate questions from
+ * 2. Content is fetched and combined by ContentFetcherService
+ * 3. This prompt asks GPT-4o to generate 10-15 multiple choice questions
+ * 4. Each question has 4 choices (A-D) with one correct answer
+ * 5. Response is parsed as JSON and stored in database
+ *
+ * Model: gpt-4o (configurable via DEFAULT_AI_MODEL env var)
+ */
+
 import { MultipleChoiceResponse } from '#types/ai.types'
 
+/**
+ * Create multiple choice generation prompt
+ *
+ * @param context - Combined text from notes and PDF extractions
+ * @returns Prompt instructing GPT to generate MC questions in specific JSON format
+ *
+ * Output format:
+ * {
+ *   questions: [{
+ *     question: string,
+ *     answer: "Choices:\nA: ...\nB: ...\nC: ...\nD: ...\nCorrect Answer: B\nExplanation: ..."
+ *   }, ...]
+ * }
+ */
 export function createMultipleChoicePrompt(context: string): string {
   return `
 Based on the following context, generate a set of 10-15 challenging multiple-choice questions.

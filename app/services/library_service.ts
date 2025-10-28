@@ -1,3 +1,17 @@
+/**
+ * Library Service
+ *
+ * Manages file uploads (PDFs, documents) stored in S3.
+ *
+ * Key Concepts:
+ * - **Upload Flow**: Frontend gets presigned URL → uploads directly to S3 → creates library item record
+ * - **Global Items**: Can be shared across all projects (toggled by project owner)
+ * - **Project Items**: Belong to a single project
+ * - **Vectorization**: PDFs are automatically vectorized when attached to notes (see NativeVectorService)
+ *
+ * Used by: LibrariesController
+ */
+
 import LibraryItem from '#models/library_item'
 import AuthorizationService from '#services/authorization_service'
 import { getPresignedUrl, getPresignedViewUrl } from '../utils/s3.js'
@@ -12,8 +26,12 @@ export default class LibraryService {
     this.authService = new AuthorizationService()
   }
 
+  // ========== Public Methods ==========
+
   /**
-   * Generate presigned URL for file upload
+   * Generate presigned S3 URL for file upload
+   *
+   * @returns Presigned URL (expires in 5 minutes), S3 key, expiration time
    */
   async getPresignedUrl(data: PresignedUrlData): Promise<PresignedUrlResponse> {
     const result = await getPresignedUrl(data.fileName, data.fileType)
@@ -26,16 +44,17 @@ export default class LibraryService {
   }
 
   /**
-   * Create library item after successful upload
+   * Create library item record after S3 upload
+   *
+   * @param data - File metadata (fileName, fileType, S3 key, size, projectId)
+   * @returns Created library item
+   * @throws Error if user doesn't own the project
    */
   async createLibraryItem(data: CreateLibraryItemData): Promise<LibraryItem> {
-    // Verify project access
     const project = await this.authService.getProjectForUser(data.userId, data.projectId)
 
-    const randomId = randomUUID()
-
-    const libraryItem = await LibraryItem.create({
-      id: randomId,
+    return LibraryItem.create({
+      id: randomUUID(),
       projectId: project.id,
       name: data.fileName,
       mimeType: data.fileType,
@@ -44,73 +63,63 @@ export default class LibraryService {
       isGlobal: data.isGlobal || false,
       uploadedAt: DateTime.now(),
     })
-
-    return libraryItem
   }
 
   /**
-   * Get all library items for user (across all their projects)
+   * Get all library items across user's projects
+   *
+   * Returns items from all projects user owns + global items
    */
   async getAllLibraryItems(userId: string): Promise<LibraryItem[]> {
-    // Get all project IDs belonging to the user
     const projectIds = await this.authService.getUserProjectIds(userId)
+    if (projectIds.length === 0) return []
 
-    if (projectIds.length === 0) {
-      return []
-    }
-
-    // Get all library items for those projects + global items
-    const libraryItems = await LibraryItem.query()
+    return LibraryItem.query()
       .where((query) => {
         query.whereIn('projectId', projectIds).orWhere('isGlobal', true)
       })
       .orderBy('createdAt', 'desc')
-
-    return libraryItems
   }
 
   /**
-   * Get library items for a specific project
+   * Get library items for specific project
+   *
+   * Returns project items + global items (shared across all projects)
    */
-  async getProjectLibraryItems(userId: string, projectId: string): Promise<LibraryItem[]> {
-    // Verify project access
-    await this.authService.getProjectForUser(userId, projectId)
-
-    const libraryItems = await LibraryItem.query()
+  async getProjectLibraryItems(_userId: string, projectId: string): Promise<LibraryItem[]> {
+    return LibraryItem.query()
       .where((query) => {
         query.where('projectId', projectId).orWhere('isGlobal', true)
       })
       .orderBy('createdAt', 'desc')
-
-    return libraryItems
   }
 
   /**
    * Get library item by ID with access check
    */
   async getLibraryItemById(userId: string, libraryItemId: string): Promise<LibraryItem> {
-    return await this.authService.getLibraryItemForUser(userId, libraryItemId)
+    return this.authService.getLibraryItemForUser(userId, libraryItemId)
   }
 
   /**
-   * Get presigned view URL for a library item
+   * Get presigned URL for viewing/downloading a file
+   *
+   * @returns Presigned URL (expires in 15 minutes) and expiration time
+   * @throws Error if user doesn't have access to the item
    */
   async getLibraryItemViewUrl(
     userId: string,
     libraryItemId: string
   ): Promise<{ presignedUrl: string; expiresIn: number }> {
     const libraryItem = await this.authService.getLibraryItemForUser(userId, libraryItemId)
-
     const result = await getPresignedViewUrl(libraryItem.storagePath)
-
-    return {
-      presignedUrl: result.presignedUrl,
-      expiresIn: result.expiresIn,
-    }
+    return { presignedUrl: result.presignedUrl, expiresIn: result.expiresIn }
   }
 
   /**
-   * Toggle global status of a library item
+   * Toggle global status (project-only ↔ shared across all projects)
+   *
+   * Only project owner can toggle. Global items appear in all projects.
    */
   async toggleGlobalStatus(userId: string, libraryItemId: string): Promise<LibraryItem> {
     const libraryItem = await LibraryItem.query()
@@ -118,155 +127,11 @@ export default class LibraryService {
       .preload('project')
       .firstOrFail()
 
-    // Only project owners can toggle global status
     if (!libraryItem.project || libraryItem.project.userId !== userId) {
       throw new Error('You do not have permission to modify this library item')
     }
 
-    // Toggle the global status
     await libraryItem.merge({ isGlobal: !libraryItem.isGlobal }).save()
-
     return libraryItem
-  }
-
-  /**
-   * Delete library item (only if user owns the project)
-   */
-  async deleteLibraryItem(userId: string, libraryItemId: string): Promise<void> {
-    const libraryItem = await LibraryItem.query()
-      .where('id', libraryItemId)
-      .preload('project')
-      .firstOrFail()
-
-    // Only project owners can delete items
-    if (!libraryItem.project || libraryItem.project.userId !== userId) {
-      throw new Error('You do not have permission to delete this library item')
-    }
-
-    // TODO: Consider deleting the actual file from S3 as well
-    // This would require implementing a cleanup service
-
-    await libraryItem.delete()
-  }
-
-  /**
-   * Update library item metadata
-   */
-  async updateLibraryItem(
-    userId: string,
-    libraryItemId: string,
-    data: { name?: string; isGlobal?: boolean }
-  ): Promise<LibraryItem> {
-    const libraryItem = await LibraryItem.query()
-      .where('id', libraryItemId)
-      .preload('project')
-      .firstOrFail()
-
-    // Only project owners can update items
-    if (!libraryItem.project || libraryItem.project.userId !== userId) {
-      throw new Error('You do not have permission to modify this library item')
-    }
-
-    await libraryItem.merge(data).save()
-
-    return libraryItem
-  }
-
-  /**
-   * Get library items associated with a note
-   */
-  async getLibraryItemsByNote(userId: string, noteId: string): Promise<LibraryItem[]> {
-    // Verify note access
-    await this.authService.getNoteForUser(userId, noteId)
-
-    const libraryItems = await LibraryItem.query()
-      .where('noteId', noteId)
-      .orderBy('createdAt', 'desc')
-
-    return libraryItems
-  }
-
-  /**
-   * Search library items by name or type
-   */
-  async searchLibraryItems(
-    userId: string,
-    query: string,
-    projectId?: string,
-    mimeType?: string
-  ): Promise<LibraryItem[]> {
-    let queryBuilder = LibraryItem.query()
-
-    // Filter by project access
-    if (projectId) {
-      await this.authService.getProjectForUser(userId, projectId)
-      queryBuilder = queryBuilder.where((q) => {
-        q.where('projectId', projectId).orWhere('isGlobal', true)
-      })
-    } else {
-      const projectIds = await this.authService.getUserProjectIds(userId)
-      queryBuilder = queryBuilder.where((q) => {
-        q.whereIn('projectId', projectIds).orWhere('isGlobal', true)
-      })
-    }
-
-    // Filter by search query
-    if (query) {
-      queryBuilder = queryBuilder.where('name', 'ILIKE', `%${query}%`)
-    }
-
-    // Filter by mime type
-    if (mimeType) {
-      queryBuilder = queryBuilder.where('mimeType', 'ILIKE', `${mimeType}%`)
-    }
-
-    const libraryItems = await queryBuilder.orderBy('createdAt', 'desc').limit(50)
-
-    return libraryItems
-  }
-
-  /**
-   * Get library items statistics for a user
-   */
-  async getLibraryStatistics(userId: string): Promise<{
-    totalItems: number
-    totalSize: number
-    globalItems: number
-    projectItems: number
-    byMimeType: Record<string, number>
-  }> {
-    const projectIds = await this.authService.getUserProjectIds(userId)
-
-    if (projectIds.length === 0) {
-      return {
-        totalItems: 0,
-        totalSize: 0,
-        globalItems: 0,
-        projectItems: 0,
-        byMimeType: {},
-      }
-    }
-
-    const libraryItems = await LibraryItem.query()
-      .where((query) => {
-        query.whereIn('projectId', projectIds).orWhere('isGlobal', true)
-      })
-      .select('size', 'isGlobal', 'mimeType')
-
-    const stats = {
-      totalItems: libraryItems.length,
-      totalSize: libraryItems.reduce((sum, item) => sum + (item.size || 0), 0),
-      globalItems: libraryItems.filter((item) => item.isGlobal).length,
-      projectItems: libraryItems.filter((item) => !item.isGlobal).length,
-      byMimeType: {} as Record<string, number>,
-    }
-
-    // Group by mime type
-    libraryItems.forEach((item) => {
-      const mimeType = item.mimeType || 'unknown'
-      stats.byMimeType[mimeType] = (stats.byMimeType[mimeType] || 0) + 1
-    })
-
-    return stats
   }
 }

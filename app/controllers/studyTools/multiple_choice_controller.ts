@@ -1,13 +1,22 @@
+/**
+ * Multiple Choice Controller
+ *
+ * Manages multiple choice quiz sets with AI-powered generation:
+ * 1. User selects notes/library items as source material
+ * 2. AI generates multiple choice questions with 4 options each
+ * 3. One correct answer per question
+ * 4. User can star individual questions for quick review
+ *
+ */
+
 import type { HttpContext } from '@adonisjs/core/http'
 import vine from '@vinejs/vine'
 import { errors as vineErrors } from '@vinejs/vine'
 import MultipleChoiceSet from '#models/multiple_choice_set'
-import Note from '#models/note'
-import LibraryItem from '#models/library_item'
-import Project from '#models/project'
 import MultipleChoiceQuestion from '#models/multiple_choice_question'
-import { MultipleChoiceService } from '#services/multiple_choice_service'
+import { MultipleChoiceService } from '#services/studyTools/multiple_choice_service'
 import AIService from '#services/ai_service'
+import { validateContentSources, verifyProjectOwnership } from './helpers.js'
 
 export default class MultipleChoiceController {
   private multipleChoiceService = new MultipleChoiceService()
@@ -27,18 +36,24 @@ export default class MultipleChoiceController {
     })
   )
 
-  // Project-level multiple choice set methods
-  async getProjectMultipleChoiceSets({ params, response, request }: HttpContext) {
+  // ==========================================
+  // CRUD Operations for Multiple Choice Sets
+  // ==========================================
+
+  /**
+   * Get all multiple choice sets for a project
+   */
+  async getProjectMultipleChoiceSets(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { projectId } = params
+      const userId = ctx.userId!
+      const { projectId } = ctx.params
 
       const multipleChoiceSets = await this.multipleChoiceService.getProjectMultipleChoiceSets(
-        user.id,
+        userId,
         projectId
       )
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Multiple choice sets retrieved successfully',
         data: multipleChoiceSets.map((set) => ({
           ...set.serialize(),
@@ -46,68 +61,49 @@ export default class MultipleChoiceController {
         })),
       })
     } catch (error) {
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to retrieve multiple choice sets',
         error: error.message,
       })
     }
   }
 
-  async createProjectMultipleChoiceSet({ params, request, response }: HttpContext) {
+  /**
+   * Create a new multiple choice set with AI generation
+   *
+   * Process:
+   * 1. Validate input and content sources
+   * 2. Create multiple choice set record
+   * 3. Attach source notes/library items
+   * 4. Generate questions using AI
+   * 5. If generation fails, rollback the set creation
+   */
+  async createProjectMultipleChoiceSet(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { projectId } = params
-      const payload = await request.validateUsing(
+      const userId = ctx.userId!
+      const { projectId } = ctx.params
+      const payload = await ctx.request.validateUsing(
         MultipleChoiceController.createProjectMultipleChoiceSetValidator
       )
 
       const selectedNotes = payload.selectedNotes || []
       const selectedLibraryItems = payload.selectedLibraryItems || []
 
-      // Ensure at least one content source is selected
-      if (selectedNotes.length === 0 && selectedLibraryItems.length === 0) {
-        return response.badRequest({
-          message: 'At least one note or library item must be selected',
-        })
-      }
-
-      // Verify all selected notes belong to the user and project (if any)
-      if (selectedNotes.length > 0) {
-        const notes = await Note.query()
-          .whereIn('id', selectedNotes)
-          .where('user_id', user.id)
-          .where('project_id', projectId)
-
-        if (notes.length !== selectedNotes.length) {
-          return response.badRequest({
-            message: 'Some selected notes are invalid or do not belong to this project',
-          })
-        }
-      }
-
-      // Verify library items if provided
-      if (selectedLibraryItems.length > 0) {
-        const libraryItems = await LibraryItem.query()
-          .whereIn('id', selectedLibraryItems)
-          .where((query) => {
-            query.where('is_global', true).orWhere('project_id', projectId)
-          })
-
-        if (libraryItems.length !== selectedLibraryItems.length) {
-          return response.badRequest({
-            message: 'Some selected library items are invalid or not accessible',
-          })
-        }
+      // Validate content sources
+      try {
+        await validateContentSources(selectedNotes, selectedLibraryItems, userId, projectId)
+      } catch (validationError) {
+        return ctx.response.badRequest({ message: validationError.message })
       }
 
       // Create the multiple choice set
       const multipleChoiceSet = await MultipleChoiceSet.create({
         name: payload.name,
-        userId: user.id,
-        projectId: projectId,
+        userId,
+        projectId,
       })
 
-      // Attach notes and library items
+      // Attach source content
       if (selectedNotes.length > 0) {
         await multipleChoiceSet.related('notes').attach(selectedNotes)
       }
@@ -115,11 +111,11 @@ export default class MultipleChoiceController {
         await multipleChoiceSet.related('libraryItems').attach(selectedLibraryItems)
       }
 
-      // Generate multiple choice questions directly
+      // Generate multiple choice questions using AI
       console.log('Starting multiple choice generation:', {
         multipleChoiceSetId: multipleChoiceSet.id,
-        userId: user.id,
-        projectId: projectId,
+        userId,
+        projectId,
         notesCount: selectedNotes.length,
         libraryItemsCount: selectedLibraryItems.length,
       })
@@ -127,15 +123,15 @@ export default class MultipleChoiceController {
       try {
         const result = await this.aiService.generateMultipleChoiceSet({
           multipleChoiceSetId: multipleChoiceSet.id,
-          userId: user.id,
-          projectId: projectId,
+          userId,
+          projectId,
           selectedNoteIds: selectedNotes,
           selectedLibraryItemIds: selectedLibraryItems,
         })
 
         console.log('✅ Multiple choice generation completed successfully')
 
-        return response.created({
+        return ctx.response.created({
           ...multipleChoiceSet.serialize(),
           type: 'multiple_choice',
           message: `Multiple choice set created successfully with ${result.questionsCount} questions`,
@@ -144,159 +140,157 @@ export default class MultipleChoiceController {
         })
       } catch (generationError) {
         console.error('❌ Failed to generate multiple choice questions:', generationError)
-        // Delete the created set if generation failed
+        // Rollback: Delete the created set if generation failed
         await multipleChoiceSet.delete()
         throw new Error(`Failed to generate multiple choice questions: ${generationError.message}`)
       }
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: 'Validation failed',
           errors: error.messages,
         })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to create multiple choice set',
         error: error.message,
       })
     }
   }
 
-  async getProjectMultipleChoiceSet({ params, response, request }: HttpContext) {
+  /**
+   * Get a specific multiple choice set with all its questions
+   */
+  async getProjectMultipleChoiceSet(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { setId } = params
+      const userId = ctx.userId!
+      const { setId } = ctx.params
 
-      const multipleChoiceSet = await this.multipleChoiceService.getMultipleChoiceSet(
-        user.id,
-        setId
-      )
+      const multipleChoiceSet = await this.multipleChoiceService.getMultipleChoiceSet(userId, setId)
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Multiple choice set retrieved successfully',
         data: multipleChoiceSet,
       })
     } catch (error) {
       if (error.message === 'Multiple choice set not found or access denied') {
-        return response.notFound({
+        return ctx.response.notFound({
           message: 'Multiple choice set not found or you do not have access to it',
         })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to retrieve multiple choice set',
         error: error.message,
       })
     }
   }
 
-  async updateProjectMultipleChoiceSet({ params, request, response }: HttpContext) {
+  /**
+   * Update a multiple choice set's name
+   */
+  async updateProjectMultipleChoiceSet(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { setId } = params
-      const payload = await request.validateUsing(
+      const userId = ctx.userId!
+      const { setId } = ctx.params
+      const payload = await ctx.request.validateUsing(
         MultipleChoiceController.updateMultipleChoiceSetValidator
       )
 
       const updatedMultipleChoiceSet = await this.multipleChoiceService.updateMultipleChoiceSet(
-        user.id,
+        userId,
         setId,
         payload
       )
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Multiple choice set updated successfully',
         data: updatedMultipleChoiceSet,
       })
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: 'Validation failed',
           errors: error.messages,
         })
       }
 
       if (error.message === 'Multiple choice set not found or access denied') {
-        return response.notFound({
+        return ctx.response.notFound({
           message: 'Multiple choice set not found or you do not have access to it',
         })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to update multiple choice set',
         error: error.message,
       })
     }
   }
 
-  async deleteProjectMultipleChoiceSet({ params, response, request }: HttpContext) {
+  /**
+   * Delete a multiple choice set and all its questions (CASCADE)
+   */
+  async deleteProjectMultipleChoiceSet(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { setId } = params
+      const userId = ctx.userId!
+      const { setId } = ctx.params
 
-      await this.multipleChoiceService.deleteMultipleChoiceSet(user.id, setId)
+      await this.multipleChoiceService.deleteMultipleChoiceSet(userId, setId)
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Multiple choice set deleted successfully',
       })
     } catch (error) {
       if (error.message === 'Multiple choice set not found or access denied') {
-        return response.notFound({
+        return ctx.response.notFound({
           message: 'Multiple choice set not found or you do not have access to it',
         })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to delete multiple choice set',
         error: error.message,
       })
     }
   }
 
-  // Starred multiple choice questions methods
-  async getProjectStarredMultipleChoiceQuestions({ params, response, request }: HttpContext) {
+  // ==========================================
+  // Starred Questions (Quick Review)
+  // ==========================================
+
+  /**
+   * Get all starred multiple choice questions for a project
+   */
+  async getProjectStarredMultipleChoiceQuestions(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { projectId } = params
+      const userId = ctx.userId!
+      const { projectId } = ctx.params
 
-      // Verify user owns the project
-      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
-
-      if (!project) {
-        return response.notFound({
-          message: 'Project not found or you do not have access to it',
-        })
-      }
+      const project = await verifyProjectOwnership(userId, projectId)
 
       // Load starred multiple choice questions with their set information
       await project.load('starredMultipleChoiceQuestions', (query) => {
         query.preload('multipleChoiceSet')
       })
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Starred multiple choice questions retrieved successfully',
         data: project.starredMultipleChoiceQuestions,
       })
     } catch (error) {
-      return response.internalServerError({
-        message: 'Failed to retrieve starred multiple choice questions',
-        error: error.message,
-      })
+      return ctx.response.notFound({ message: error.message })
     }
   }
 
-  async starMultipleChoiceQuestion({ params, response, request }: HttpContext) {
+  /**
+   * Star a multiple choice question for quick review
+   */
+  async starMultipleChoiceQuestion(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { projectId, questionId } = params
+      const userId = ctx.userId!
+      const { projectId, questionId } = ctx.params
 
-      // Verify user owns the project
-      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
-
-      if (!project) {
-        return response.notFound({
-          message: 'Project not found or you do not have access to it',
-        })
-      }
+      const project = await verifyProjectOwnership(userId, projectId)
 
       // Verify question exists and belongs to a multiple choice set in this project
       const question = await MultipleChoiceQuestion.query()
@@ -307,7 +301,7 @@ export default class MultipleChoiceController {
         .first()
 
       if (!question || !question.multipleChoiceSet) {
-        return response.notFound({
+        return ctx.response.notFound({
           message: 'Multiple choice question not found or does not belong to this project',
         })
       }
@@ -315,39 +309,35 @@ export default class MultipleChoiceController {
       // Add to starred questions (attach will ignore duplicates)
       await project.related('starredMultipleChoiceQuestions').attach([questionId])
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Multiple choice question starred successfully',
       })
     } catch (error) {
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to star multiple choice question',
         error: error.message,
       })
     }
   }
 
-  async unstarMultipleChoiceQuestion({ params, response, request }: HttpContext) {
+  /**
+   * Unstar a multiple choice question
+   */
+  async unstarMultipleChoiceQuestion(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const { projectId, questionId } = params
+      const userId = ctx.userId!
+      const { projectId, questionId } = ctx.params
 
-      // Verify user owns the project
-      const project = await Project.query().where('id', projectId).where('user_id', user.id).first()
-
-      if (!project) {
-        return response.notFound({
-          message: 'Project not found or you do not have access to it',
-        })
-      }
+      const project = await verifyProjectOwnership(userId, projectId)
 
       // Remove from starred questions
       await project.related('starredMultipleChoiceQuestions').detach([questionId])
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Multiple choice question unstarred successfully',
       })
     } catch (error) {
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to unstar multiple choice question',
         error: error.message,
       })

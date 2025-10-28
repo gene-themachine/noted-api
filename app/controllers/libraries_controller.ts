@@ -1,7 +1,29 @@
+/**
+ * Libraries Controller
+ *
+ * Manages file uploads and library items (PDFs, documents, etc.):
+ * 1. Generate presigned S3 URLs for direct browser uploads
+ * 2. Create library item records after successful upload
+ * 3. Retrieve library items (all, by project, by ID)
+ * 4. Generate presigned URLs for viewing/downloading
+ * 5. Toggle global status (share across projects)
+ * 6. Check vectorization status for RAG integration
+ *
+ * Flow:
+ * - Frontend requests presigned URL → Upload to S3 → Confirm upload
+ * - Library item triggers vectorization (see library_service.ts)
+ * - RAG system uses vectorized content for Q&A
+ *
+ * Library Items can be:
+ * - Project-scoped: Only accessible within one project
+ * - Global: Accessible across all user's projects
+ */
+
 import type { HttpContext } from '@adonisjs/core/http'
 import vine from '@vinejs/vine'
 import { errors as vineErrors } from '@vinejs/vine'
 import LibraryService from '#services/library_service'
+import { isNotFoundError, isPermissionError, isAWSError } from './helpers.js'
 
 export default class LibrariesController {
   private libraryService: LibraryService
@@ -28,46 +50,61 @@ export default class LibrariesController {
     })
   )
 
-  async getPresignedUrl({ request, response }: HttpContext) {
+  // ==========================================
+  // S3 Presigned URLs (Direct Upload)
+  // ==========================================
+
+  /**
+   * Generate presigned S3 URL for direct browser upload
+   *
+   * Frontend flow:
+   * 1. Request presigned URL with fileName and fileType
+   * 2. Upload file directly to S3 using presigned URL
+   * 3. Call uploadFile() to create library item record
+   */
+  async getPresignedUrl(ctx: HttpContext) {
     try {
-      const payload = await request.validateUsing(LibrariesController.presignedUrlValidator)
+      const payload = await ctx.request.validateUsing(LibrariesController.presignedUrlValidator)
 
       const result = await this.libraryService.getPresignedUrl({
         fileName: payload.fileName,
         fileType: payload.fileType,
       })
 
-      return response.json(result)
+      return ctx.response.json(result)
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: 'Validation failed',
           errors: error.messages,
         })
       }
 
-      // Log the actual error for debugging
       console.error('Presigned URL generation error:', error)
 
-      // Check for specific AWS errors
-      if (error.message?.includes('credentials') || error.message?.includes('AWS')) {
-        return response.internalServerError({
+      if (isAWSError(error)) {
+        return ctx.response.internalServerError({
           message: 'AWS configuration error. Please check S3 credentials and bucket settings.',
           error: error.message,
         })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to generate presigned URL',
         error: error.message,
       })
     }
   }
 
-  async uploadFile({ request, response }: HttpContext) {
+  /**
+   * Create library item record after successful S3 upload
+   *
+   * This confirms the upload and triggers vectorization for PDFs
+   */
+  async uploadFile(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const payload = await request.validateUsing(LibrariesController.uploadValidator)
+      const userId = ctx.userId!
+      const payload = await ctx.request.validateUsing(LibrariesController.uploadValidator)
 
       const libraryItem = await this.libraryService.createLibraryItem({
         projectId: payload.projectId,
@@ -76,137 +113,172 @@ export default class LibrariesController {
         fileType: payload.fileType,
         size: payload.size,
         isGlobal: payload.isGlobal || false,
-        userId: user.id,
+        userId,
       })
 
-      return response.created(libraryItem)
+      return ctx.response.created(libraryItem)
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: 'Validation failed',
           errors: error.messages,
         })
       }
 
-      // Log the actual error for debugging
       console.error('Library item creation error:', error)
 
-      // Check for specific authorization errors
-      if (error.message?.includes('not found') || error.message?.includes('access')) {
-        return response.notFound({
+      if (isNotFoundError(error) || isPermissionError(error)) {
+        return ctx.response.notFound({
           message: 'Project not found or access denied',
           error: error.message,
         })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to create library item',
         error: error.message,
       })
     }
   }
 
-  async getAllLibraryItems({ request, response }: HttpContext) {
+  // ==========================================
+  // Retrieval Operations
+  // ==========================================
+
+  /**
+   * Get all library items for the user (across all projects)
+   */
+  async getAllLibraryItems(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const libraryItems = await this.libraryService.getAllLibraryItems(user.id)
-      return response.json(libraryItems)
+      const userId = ctx.userId!
+      const libraryItems = await this.libraryService.getAllLibraryItems(userId)
+      return ctx.response.json(libraryItems)
     } catch (error) {
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to retrieve library items',
       })
     }
   }
 
-  async getProjectLibraryItems({ request, response }: HttpContext) {
+  /**
+   * Get library items for a specific project
+   * Includes global items accessible to this project
+   */
+  async getProjectLibraryItems(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const projectId = request.param('projectId')
+      const userId = ctx.userId!
+      const projectId = ctx.request.param('projectId')
 
-      const libraryItems = await this.libraryService.getProjectLibraryItems(user.id, projectId)
-      return response.json(libraryItems)
+      const libraryItems = await this.libraryService.getProjectLibraryItems(userId, projectId)
+      return ctx.response.json(libraryItems)
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to retrieve project library items',
       })
     }
   }
 
-  async getLibraryItemById({ request, response }: HttpContext) {
+  /**
+   * Get a specific library item by ID
+   */
+  async getLibraryItemById(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const libraryItemId = request.param('id')
+      const userId = ctx.userId!
+      const libraryItemId = ctx.request.param('id')
 
-      const libraryItem = await this.libraryService.getLibraryItemById(user.id, libraryItemId)
-      return response.json({ data: libraryItem.serialize() })
+      const libraryItem = await this.libraryService.getLibraryItemById(userId, libraryItemId)
+      return ctx.response.json({ data: libraryItem.serialize() })
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Library item not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Library item not found' })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to retrieve library item',
       })
     }
   }
 
-  async getLibraryItemViewUrl({ request, response }: HttpContext) {
+  /**
+   * Get presigned URL for viewing/downloading a library item
+   * Used to display PDFs in browser or trigger download
+   */
+  async getLibraryItemViewUrl(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const libraryItemId = request.param('id')
+      const userId = ctx.userId!
+      const libraryItemId = ctx.request.param('id')
 
-      const result = await this.libraryService.getLibraryItemViewUrl(user.id, libraryItemId)
-      return response.json({ url: result.presignedUrl })
+      const result = await this.libraryService.getLibraryItemViewUrl(userId, libraryItemId)
+      return ctx.response.json({ url: result.presignedUrl })
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Library item not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Library item not found' })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to generate view URL',
       })
     }
   }
 
-  async toggleGlobalStatus({ request, response }: HttpContext) {
-    try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const libraryItemId = request.param('id')
+  // ==========================================
+  // Library Item Management
+  // ==========================================
 
-      const libraryItem = await this.libraryService.toggleGlobalStatus(user.id, libraryItemId)
-      return response.ok(libraryItem)
+  /**
+   * Toggle global status of a library item
+   *
+   * Global items are accessible across all user's projects
+   * Non-global items are scoped to a single project
+   */
+  async toggleGlobalStatus(ctx: HttpContext) {
+    try {
+      const userId = ctx.userId!
+      const libraryItemId = ctx.request.param('id')
+
+      const libraryItem = await this.libraryService.toggleGlobalStatus(userId, libraryItemId)
+      return ctx.response.ok(libraryItem)
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Library item not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Library item not found' })
       }
-      if (error.message.includes('permission')) {
-        return response.forbidden({ message: error.message })
+      if (isPermissionError(error)) {
+        return ctx.response.forbidden({ message: error.message })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to toggle global status',
       })
     }
   }
 
-  async getLibraryItemStatus({ request, response }: HttpContext) {
+  /**
+   * Get vectorization status for a library item
+   *
+   * Status values:
+   * - pending: Queued for vectorization
+   * - processing: Currently being vectorized
+   * - completed: Ready for RAG queries
+   * - failed: Vectorization error occurred
+   */
+  async getLibraryItemStatus(ctx: HttpContext) {
     try {
-      const user = (request as any)?.user || { id: (request as any)?.userId }
-      const libraryItemId = request.param('id')
+      const userId = ctx.userId!
+      const libraryItemId = ctx.request.param('id')
 
-      const libraryItem = await this.libraryService.getLibraryItemById(user.id, libraryItemId)
+      const libraryItem = await this.libraryService.getLibraryItemById(userId, libraryItemId)
 
-      return response.json({
+      return ctx.response.json({
         vectorStatus: libraryItem.vectorStatus,
         processingStatus: libraryItem.processingStatus,
         vectorUpdatedAt: libraryItem.vectorUpdatedAt,
         updatedAt: libraryItem.updatedAt,
       })
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Library item not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Library item not found' })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to get library item status',
       })
     }

@@ -20,9 +20,3 @@ export interface QAData {
   qaBlockId: string
   question: string
 }
-
-export interface QAResponse {
-  success: boolean
-  answer?: string
-  error?: string
-}

@@ -1,12 +1,29 @@
+/**
+ * JWKS Service
+ *
+ * Handles JWT authentication using Supabase's JWKS endpoint.
+ *
+ * Authentication Flow:
+ * 1. User logs in via Supabase (frontend)
+ * 2. Frontend sends JWT token in request headers
+ * 3. This service verifies JWT against Supabase's public keys (JWKS)
+ * 4. Creates/retrieves local user record by Supabase UID
+ * 5. Attaches userId to request context for authorization
+ *
+ * Key Features:
+ * - ES256 algorithm only (Supabase standard)
+ * - Automatic JWKS caching (handled by jose library)
+ * - Singleton pattern (single instance across app)
+ * - Auto-creates users on first login
+ *
+ * Used by: SupabaseAuthMiddleware (app/middleware/supabase_auth_middleware.ts)
+ */
+
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import env from '#start/env'
 import User from '#models/user'
 import { JWTPayload } from '#types/auth.types'
 
-/**
- * Centralized JWKS and JWT verification service
- * Provides consistent ES256-only JWT verification across the application
- */
 export class JWKSService {
   private static instance: JWKSService
 
@@ -24,8 +41,10 @@ export class JWKSService {
     this.isDevelopment = env.get('NODE_ENV') === 'development'
   }
 
+  // ========== Public API ==========
+
   /**
-   * Get singleton instance
+   * Get singleton instance (lazy initialization)
    */
   static getInstance(): JWKSService {
     if (!JWKSService.instance) {
@@ -36,29 +55,28 @@ export class JWKSService {
 
   /**
    * Verify JWT token and return payload
-   * Note: The jose library's createRemoteJWKSet handles JWKS caching automatically:
-   * - Fetches JWKS on first use
-   * - Caches based on HTTP cache headers
-   * - Refetches only when cache expires or key not found
+   *
+   * @param token - JWT token from request header
+   * @returns Decoded JWT payload with user claims (sub, email, etc.)
+   * @throws Error if token is invalid, expired, or has wrong issuer/audience
+   *
+   * Note: JWKS caching is automatic (jose library handles it)
    */
   async verifyToken(token: string): Promise<JWTPayload> {
     try {
-      // ES256-only JWT verification using jose library's built-in JWKS handling
       const { payload } = await jwtVerify(token, this.jwks, {
         issuer: this.expectedIssuer || undefined,
         audience: this.expectedAudience || undefined,
-        algorithms: ['ES256'], // Explicitly support ES256 only
+        algorithms: ['ES256'],
       })
 
-      // Only log in debug mode to reduce noise
-      const isVerbose = this.isDevelopment && env.get('LOG_LEVEL') === 'debug'
-      if (isVerbose) {
+      // Debug logging (only in development with LOG_LEVEL=debug)
+      if (this.isDevelopment && env.get('LOG_LEVEL') === 'debug') {
         console.log('✅ JWT verified:', { sub: payload.sub, email: (payload as any).email })
       }
 
       return payload as JWTPayload
     } catch (error: any) {
-      // Always log errors with details for debugging
       console.error('❌ JWT verification failed:', {
         error: error.message,
         code: error.code,
@@ -69,7 +87,13 @@ export class JWKSService {
   }
 
   /**
-   * Verify JWT token and resolve/create local user
+   * Verify JWT and get/create local user
+   *
+   * @param token - JWT token from request
+   * @returns Payload, user model, and userId
+   * @throws Error if token invalid or missing 'sub' claim
+   *
+   * Auto-creates user on first login (Supabase UID becomes primary key)
    */
   async verifyTokenAndGetUser(
     token: string
@@ -78,11 +102,9 @@ export class JWKSService {
     const supabaseUid = String(payload.sub || '')
     const email = payload.email as string | undefined
 
-    if (!supabaseUid) {
-      throw new Error('Invalid token: missing sub claim')
-    }
+    if (!supabaseUid) throw new Error('Invalid token: missing sub claim')
 
-    // Resolve local user by Supabase uid, create if missing
+    // Find or create user
     let user = await User.findBy('supabaseUid', supabaseUid)
     if (!user) {
       if (this.isDevelopment) {
@@ -91,33 +113,7 @@ export class JWKSService {
       user = await User.create({ supabaseUid, email: email || '' })
     }
 
-    return {
-      payload,
-      user,
-      userId: user.id,
-    }
-  }
-
-  /**
-   * Get Supabase configuration summary for debugging
-   */
-  getSupabaseConfig(): Record<string, any> {
-    return {
-      jwksUrl: this.jwksUrl,
-      issuer: this.expectedIssuer,
-      audience: this.expectedAudience || 'authenticated',
-      jwksUrlValid: this.isValidUrl(this.jwksUrl),
-      issuerValid: this.isValidUrl(this.expectedIssuer),
-    }
-  }
-
-  private isValidUrl(str: string): boolean {
-    try {
-      new URL(str)
-      return true
-    } catch {
-      return false
-    }
+    return { payload, user, userId: user.id }
   }
 }
 

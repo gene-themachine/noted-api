@@ -48,6 +48,9 @@ export default class LibraryItem extends BaseModel {
   @column.dateTime()
   declare vectorUpdatedAt: DateTime | null
 
+  @column()
+  declare summary: string | null
+
   @column.dateTime()
   declare uploadedAt: DateTime // Defaults to now()
 

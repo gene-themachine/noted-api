@@ -1,7 +1,32 @@
+/**
+ * Project Controller
+ *
+ * Manages projects (the top-level organizational unit):
+ * 1. Project CRUD - Create, read, update, delete projects
+ * 2. Project Data - Get notes, library items, study tools for a project
+ * 3. Tree Manipulation - Move/reorder notes and folders via drag-and-drop
+ *
+ * Projects contain:
+ * - Notes organized in folder tree (stored as JSON in folderStructure)
+ * - Library items (PDFs, documents)
+ * - Study tools (flashcards, quizzes, free response)
+ * - Starred items for quick review
+ *
+ * Tree Structure:
+ * - Stored as hierarchical JSON in project.folderStructure
+ * - Supports drag-and-drop reordering via moveNode/reorderNodes
+ * - Manipulated by @dnd-kit on frontend
+ *
+ * Related Controllers:
+ * - NotesController handles note/folder creation
+ * - StudyToolsControllers manage study materials
+ */
+
 import type { HttpContext } from '@adonisjs/core/http'
 import vine from '@vinejs/vine'
 import { errors as vineErrors } from '@vinejs/vine'
 import ProjectService from '#services/project_service'
+import { isNotFoundError } from './helpers.js'
 
 export default class ProjectController {
   private projectService: ProjectService
@@ -49,12 +74,17 @@ export default class ProjectController {
     })
   )
 
-  // Create a new project/group
-  async createNewProject({ request, response }: HttpContext) {
+  // ==========================================
+  // Project CRUD
+  // ==========================================
+
+  /**
+   * Create a new project
+   */
+  async createNewProject(ctx: HttpContext) {
     try {
-      const userId =
-        (request as any)?.user?.id || (request as any)?.userId || (global as any)?.userId
-      const payload = await request.validateUsing(ProjectController.createValidator)
+      const userId = ctx.userId!
+      const payload = await ctx.request.validateUsing(ProjectController.createValidator)
 
       const project = await this.projectService.createProject({
         name: payload.name,
@@ -63,7 +93,7 @@ export default class ProjectController {
         userId,
       })
 
-      return response.created({
+      return ctx.response.created({
         message: 'Project created successfully',
         project: {
           id: project.id,
@@ -77,25 +107,27 @@ export default class ProjectController {
       })
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: 'Validation failed',
           errors: error.messages,
         })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to create project',
       })
     }
   }
 
-  // Get all projects for the authenticated user
-  async getUserProjects({ response, request }: HttpContext) {
+  /**
+   * Get all projects for the authenticated user
+   */
+  async getUserProjects(ctx: HttpContext) {
     try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
+      const userId = ctx.userId!
       const projects = await this.projectService.getUserProjects(userId)
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Projects retrieved successfully',
         projects: projects.map((project) => ({
           id: project.id,
@@ -108,109 +140,29 @@ export default class ProjectController {
         })),
       })
     } catch (error) {
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to retrieve projects',
       })
     }
   }
 
-  async getProjectById({ response, params, request }: HttpContext) {
+  /**
+   * Get a single project by ID with all relations
+   */
+  async getProjectById(ctx: HttpContext) {
     try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
-      const project = await this.projectService.getProjectWithRelations(userId, params.id)
+      const userId = ctx.userId!
+      const project = await this.projectService.getProjectWithRelations(userId, ctx.params.id)
 
-      return response.ok({
+      return ctx.response.ok({
         project,
       })
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
       }
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to retrieve project',
-      })
-    }
-  }
-
-  /**
-   * Get all notes for a specific project
-   */
-  async getProjectNotes({ response, params, request }: HttpContext) {
-    try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
-      const projectId = params.id
-
-      // First verify user has access to the project
-      await this.projectService.getProjectById(userId, projectId)
-
-      // Get notes for this project
-      const notes = await this.projectService.getProjectNotes(userId, projectId)
-
-      return response.ok({
-        message: 'Project notes retrieved successfully',
-        data: {
-          notes: notes,
-        },
-      })
-    } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
-      }
-      return response.internalServerError({
-        message: 'Failed to retrieve project notes',
-        error: error.message,
-      })
-    }
-  }
-
-  /**
-   * Get note summaries for a specific project (lightweight - no content)
-   */
-  async getProjectNotesSummary({ response, params, request }: HttpContext) {
-    try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
-      const projectId = params.id
-      // First verify user has access to the project
-      await this.projectService.getProjectById(userId, projectId)
-      // Get note summaries for this project
-      const notesSummary = await this.projectService.getProjectNotesSummary(userId, projectId)
-      return response.ok({
-        message: 'Project notes summary retrieved successfully',
-        data: {
-          notes: notesSummary,
-        },
-      })
-    } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
-      }
-      return response.internalServerError({
-        message: 'Failed to retrieve project notes summary',
-      })
-    }
-  }
-
-  /**
-   * Get optimized data for tools screen - only summary counts and basic info
-   */
-  async getProjectToolsData({ response, params, request }: HttpContext) {
-    try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
-      const projectId = params.id
-
-      const toolsData = await this.projectService.getProjectToolsData(userId, projectId)
-
-      return response.ok({
-        message: 'Project tools data retrieved successfully',
-        data: toolsData,
-      })
-    } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
-      }
-      return response.internalServerError({
-        message: 'Failed to retrieve project tools data',
-        error: error.message,
       })
     }
   }
@@ -218,15 +170,15 @@ export default class ProjectController {
   /**
    * Update project details (name, description, color)
    */
-  async updateProject({ request, response, params }: HttpContext) {
+  async updateProject(ctx: HttpContext) {
     try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
-      const projectId = params.id
-      const payload = await request.validateUsing(ProjectController.updateValidator)
+      const userId = ctx.userId!
+      const projectId = ctx.params.id
+      const payload = await ctx.request.validateUsing(ProjectController.updateValidator)
 
       const project = await this.projectService.updateProject(userId, projectId, payload)
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Project updated successfully',
         project: {
           id: project.id,
@@ -240,17 +192,17 @@ export default class ProjectController {
       })
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: 'Validation failed',
           errors: error.messages,
         })
       }
 
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to update project',
         error: error.message,
       })
@@ -258,38 +210,136 @@ export default class ProjectController {
   }
 
   /**
-   * Delete a project and all associated data
+   * Delete a project and all associated data (CASCADE)
    */
-  async deleteProject({ request, response, params }: HttpContext) {
+  async deleteProject(ctx: HttpContext) {
     try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
-      const projectId = params.id
+      const userId = ctx.userId!
+      const projectId = ctx.params.id
 
       await this.projectService.deleteProject(userId, projectId)
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Project deleted successfully',
       })
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to delete project',
         error: error.message,
       })
     }
   }
 
+  // ==========================================
+  // Project Data Retrieval
+  // ==========================================
+
   /**
-   * Move a node to a different location in the tree
+   * Get all notes for a specific project (with full content)
    */
-  async moveNode({ request, response, params }: HttpContext) {
+  async getProjectNotes(ctx: HttpContext) {
     try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
-      const projectId = params.id
-      const payload = await request.validateUsing(ProjectController.moveNodeValidator)
+      const userId = ctx.userId!
+      const projectId = ctx.params.id
+
+      // Verify user has access to the project
+      await this.projectService.getProjectById(userId, projectId)
+
+      const notes = await this.projectService.getProjectNotes(userId, projectId)
+
+      return ctx.response.ok({
+        message: 'Project notes retrieved successfully',
+        data: {
+          notes,
+        },
+      })
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
+      }
+      return ctx.response.internalServerError({
+        message: 'Failed to retrieve project notes',
+        error: error.message,
+      })
+    }
+  }
+
+  /**
+   * Get note summaries for a specific project (lightweight - no content)
+   * Used for lists and performance-sensitive views
+   */
+  async getProjectNotesSummary(ctx: HttpContext) {
+    try {
+      const userId = ctx.userId!
+      const projectId = ctx.params.id
+
+      await this.projectService.getProjectById(userId, projectId)
+
+      const notesSummary = await this.projectService.getProjectNotesSummary(userId, projectId)
+
+      return ctx.response.ok({
+        message: 'Project notes summary retrieved successfully',
+        data: {
+          notes: notesSummary,
+        },
+      })
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
+      }
+      return ctx.response.internalServerError({
+        message: 'Failed to retrieve project notes summary',
+      })
+    }
+  }
+
+  /**
+   * Get optimized data for tools screen
+   * Returns summary counts and basic info for study tools
+   */
+  async getProjectToolsData(ctx: HttpContext) {
+    try {
+      const userId = ctx.userId!
+      const projectId = ctx.params.id
+
+      const toolsData = await this.projectService.getProjectToolsData(userId, projectId)
+
+      return ctx.response.ok({
+        message: 'Project tools data retrieved successfully',
+        data: toolsData,
+      })
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
+      }
+      return ctx.response.internalServerError({
+        message: 'Failed to retrieve project tools data',
+        error: error.message,
+      })
+    }
+  }
+
+  // ==========================================
+  // Tree Manipulation (Drag-and-Drop)
+  // ==========================================
+
+  /**
+   * Move a node (note or folder) to a different location in the tree
+   *
+   * Used for drag-and-drop operations:
+   * - Move note to different folder
+   * - Move folder to different parent
+   * - Reposition items within tree hierarchy
+   */
+  async moveNode(ctx: HttpContext) {
+    try {
+      const userId = ctx.userId!
+      const projectId = ctx.params.id
+      const payload = await ctx.request.validateUsing(ProjectController.moveNodeValidator)
 
       await this.projectService.moveNode(
         userId,
@@ -299,28 +349,28 @@ export default class ProjectController {
         payload.newIndex
       )
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Node moved successfully',
       })
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: 'Validation failed',
           errors: error.messages,
         })
       }
 
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
       }
 
       if (error.message.includes('Failed to move')) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: error.message,
         })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to move node',
         error: error.message,
       })
@@ -329,42 +379,45 @@ export default class ProjectController {
 
   /**
    * Reorder children within a parent node
+   *
+   * Used for drag-and-drop reordering:
+   * - Reorder notes within a folder
+   * - Reorder folders within a parent
+   * - Maintain custom sort order
    */
-  async reorderNodes({ request, response, params }: HttpContext) {
+  async reorderNodes(ctx: HttpContext) {
     try {
-      const userId = (request as any)?.user?.id || (request as any)?.userId
-      const projectId = params.id
-      const payload = await request.validateUsing(ProjectController.reorderNodesValidator)
+      const userId = ctx.userId!
+      const projectId = ctx.params.id
+      const payload = await ctx.request.validateUsing(ProjectController.reorderNodesValidator)
 
       await this.projectService.reorderNodes(userId, projectId, payload.parentId, payload.childIds)
 
-      return response.ok({
+      return ctx.response.ok({
         message: 'Nodes reordered successfully',
       })
     } catch (error) {
       if (error instanceof vineErrors.E_VALIDATION_ERROR) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: 'Validation failed',
           errors: error.messages,
         })
       }
 
-      if (error.message.includes('not found')) {
-        return response.notFound({ message: 'Project not found' })
+      if (isNotFoundError(error)) {
+        return ctx.response.notFound({ message: 'Project not found' })
       }
 
       if (error.message.includes('Failed to reorder')) {
-        return response.badRequest({
+        return ctx.response.badRequest({
           message: error.message,
         })
       }
 
-      return response.internalServerError({
+      return ctx.response.internalServerError({
         message: 'Failed to reorder nodes',
         error: error.message,
       })
     }
   }
-
-  // SSE functionality removed - using static notifications only
 }

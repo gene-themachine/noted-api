@@ -14,7 +14,7 @@ import { middleware } from '#start/kernel'
 // Import route modules
 import registerProjectRoutes from '#routers/projects.routes'
 import registerNotesRoutes from '#routers/notes.routes'
-import { registerProtectedQARoutes, registerPublicQARoutes } from '#routers/qa.routes'
+import { registerPublicQARoutes } from '#routers/qa.routes'
 import registerFlashcardRoutes from '#routers/flashcards.routes'
 import registerMultipleChoiceRoutes from '#routers/multiple_choice.routes'
 import registerFreeResponseRoutes from '#routers/free_response.routes'
@@ -52,9 +52,6 @@ export function registerRoutes() {
 
       // Note operations
       registerNotesRoutes()
-
-      // Q&A operations (protected REST endpoints)
-      registerProtectedQARoutes()
 
       // Study tools
       registerFlashcardRoutes()

@@ -1,6 +1,6 @@
 import router from '@adonisjs/core/services/router'
 
-const MultipleChoiceController = () => import('#controllers/multiple_choice_controller')
+const MultipleChoiceController = () => import('#controllers/studyTools/multiple_choice_controller')
 
 /**
  * Multiple Choice routes - handles multiple choice question sets and starred collections

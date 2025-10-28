@@ -1,3 +1,35 @@
+/**
+ * Shared Prompt Utilities
+ *
+ * Used by: All study tool services (FlashcardService, MultipleChoiceService, FreeResponseService)
+ * Purpose: Common utilities for parsing GPT responses and combining content
+ *
+ * These utilities handle the messy reality of GPT responses:
+ * - Sometimes JSON is wrapped in markdown code blocks
+ * - Sometimes there's extra text before/after the JSON
+ * - Sometimes the response is malformed
+ *
+ * These functions gracefully extract JSON even from messy responses.
+ */
+
+/**
+ * Extract JSON from GPT response (handles markdown code blocks and extra text)
+ *
+ * GPT often returns JSON wrapped in markdown code blocks like:
+ * ```json
+ * { "key": "value" }
+ * ```
+ *
+ * This function handles various response formats:
+ * 1. Direct JSON: { "key": "value" }
+ * 2. Markdown wrapped: ```json { "key": "value" } ```
+ * 3. Embedded in text: "Here's the data: { "key": "value" }"
+ *
+ * @param response - Raw response from GPT
+ * @returns Parsed JSON object, or null if parsing fails
+ *
+ * Used by all study tool generation services to parse GPT responses.
+ */
 export function extractJsonFromResponse(response: string): any {
   try {
     // First try to parse the response directly
@@ -39,6 +71,15 @@ export function extractJsonFromResponse(response: string): any {
   }
 }
 
+/**
+ * Combine multiple content sources into a single string
+ *
+ * @param sources - Array of content strings (from notes, PDFs, etc.)
+ * @returns Combined string with sources separated by blank lines
+ *
+ * Filters out empty/whitespace-only sources to keep prompts clean.
+ * Used by ContentFetcherService and study tool services.
+ */
 export function combineContentSources(sources: string[]): string {
   return sources.filter((source) => source && source.trim()).join('\n\n')
 }

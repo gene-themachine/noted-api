@@ -1,11 +1,31 @@
+/**
+ * Native Pinecone Service
+ *
+ * Low-level Pinecone operations for the RAG system.
+ *
+ * Core Operations:
+ * - **Upsert**: Store vector embeddings in Pinecone (batched for performance)
+ * - **Query**: Search for similar vectors (for RAG Q&A)
+ * - **Delete**: Remove vectors when documents are deleted
+ * - **Update Metadata**: Change document metadata without re-embedding
+ *
+ * Used by: NativeVectorService (high-level vectorization orchestrator)
+ *
+ * Architecture:
+ * - NativeVectorService → NativePineconeService → Pinecone Cloud
+ * - This service is a thin wrapper around Pinecone SDK
+ * - Handles batching, error handling, and logging
+ *
+ * Debug Methods:
+ * Several methods are marked as "DEBUG UTILITY" - these are kept for troubleshooting
+ * but aren't used in normal operation. See individual method docs.
+ */
+
 import { Pinecone } from '@pinecone-database/pinecone'
 import env from '#start/env'
 import { getEmbedding } from '../utils/openai.js'
 import type { NativeSearchResult, VectorRecord } from '#types/vector.types'
 
-/**
- * Native Pinecone service using direct SDK without LangChain
- */
 export default class NativePineconeService {
   private client: Pinecone
   private indexName: string
@@ -22,8 +42,10 @@ export default class NativePineconeService {
     this.index = this.client.index(this.indexName)
   }
 
+  // ========== Core Vector Operations ==========
+
   /**
-   * Validate required environment variables
+   * Validate required environment variables on startup
    */
   private validateEnvironment(): void {
     const required = ['PINECONE_API_KEY', 'PINECONE_INDEX', 'OPENAI_API_KEY']
@@ -37,7 +59,10 @@ export default class NativePineconeService {
   }
 
   /**
-   * Upsert vectors to Pinecone
+   * Upsert vectors to Pinecone (batched for performance)
+   *
+   * @param vectors - Array of vectors with embeddings and metadata
+   * Batch size: 100 vectors per request (Pinecone recommended)
    */
   async upsert(vectors: VectorRecord[]): Promise<void> {
     try {
@@ -111,6 +136,9 @@ export default class NativePineconeService {
 
   /**
    * Query with raw vector (when embedding is already computed)
+   *
+   * DEBUG UTILITY: This method is kept for debugging/troubleshooting purposes.
+   * Production code should use the query() method instead.
    */
   async queryByVector(
     vector: number[],
@@ -187,6 +215,9 @@ export default class NativePineconeService {
 
   /**
    * Fetch vectors by IDs
+   *
+   * DEBUG UTILITY: Direct fetch method for troubleshooting.
+   * Use with caution - typically wrapped by other methods.
    */
   async fetch(ids: string[]): Promise<Record<string, any>> {
     try {
@@ -268,6 +299,9 @@ export default class NativePineconeService {
 
   /**
    * Debug method to check what vectors actually exist in Pinecone
+   *
+   * DEBUG UTILITY: Helps troubleshoot vectorization issues by listing vectors.
+   * Useful for verifying if vectors were stored correctly.
    */
   async debugVectorIds(prefix?: string, limit: number = 10): Promise<string[]> {
     try {
@@ -326,6 +360,9 @@ export default class NativePineconeService {
 
   /**
    * Get index statistics
+   *
+   * DEBUG UTILITY: Returns Pinecone index statistics for monitoring.
+   * Useful for checking total vector count and namespace information.
    */
   async describeIndexStats(): Promise<any> {
     try {

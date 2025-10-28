@@ -1,25 +1,25 @@
+import { v4 as uuidv4 } from 'uuid'
+import { DateTime } from 'luxon'
+import Database from '@adonisjs/lucid/services/db'
 import FreeResponseSet from '#models/free_response_set'
 import FreeResponse from '#models/free_response'
 import FreeResponseEvaluation from '#models/free_response_evaluation'
-import AuthorizationService from '#services/authorization_service'
-import { getCompletion } from '../utils/openai.js'
-import { createFreeResponseEvaluationPrompt } from '../prompts/free_response.js'
-import { extractJsonFromResponse } from '../prompts/shared.js'
+import env from '#start/env'
+import { getCompletion, truncateToTokenLimit } from '../../utils/openai.js'
+import {
+  createFreeResponseEvaluationPrompt,
+  createFreeResponsePrompt,
+} from '../../prompts/free_response.js'
+import { extractJsonFromResponse, combineContentSources } from '../../prompts/shared.js'
 
 export class FreeResponseService {
-  private authService: AuthorizationService
-
-  constructor() {
-    this.authService = new AuthorizationService()
-  }
+  private model = env.get('DEFAULT_AI_MODEL', 'gpt-4o')
 
   /**
    * Get project free response sets for a user
+   * Authorization: Database filters by userId ensure user can only access their own data
    */
   async getProjectFreeResponseSets(userId: string, projectId: string) {
-    // Verify project access
-    await this.authService.getProjectForUser(userId, projectId)
-
     const freeResponseSets = await FreeResponseSet.query()
       .where('project_id', projectId)
       .where('user_id', userId)
@@ -239,5 +239,57 @@ export class FreeResponseService {
       .orderBy('created_at', 'desc')
 
     return evaluations
+  }
+
+  /**
+   * Generate free response questions from content using AI
+   */
+  async generateFromContent(contentSources: string[], freeResponseSetId: string): Promise<number> {
+    const combined = combineContentSources(contentSources)
+    const truncated = truncateToTokenLimit(combined)
+    const prompt = createFreeResponsePrompt(truncated, freeResponseSetId)
+
+    const response = await getCompletion(prompt, this.model)
+    const parsed = extractJsonFromResponse(response)
+    const questions = Array.isArray(parsed) ? parsed : []
+
+    if (questions.length === 0) {
+      throw new Error('AI failed to generate questions')
+    }
+
+    await this.saveQuestionsToDatabase(questions, freeResponseSetId)
+    return questions.length
+  }
+
+  /**
+   * Save questions to database
+   */
+  private async saveQuestionsToDatabase(
+    questions: Array<{
+      question: string
+      answer: string
+      rubric: Array<{ criterion: string; points: number }>
+    }>,
+    setId: string
+  ): Promise<void> {
+    const trx = await Database.transaction()
+
+    try {
+      const records = questions.map((q) => ({
+        id: uuidv4(),
+        free_response_set_id: setId,
+        question: q.question,
+        answer: q.answer,
+        rubric: JSON.stringify(Array.isArray(q.rubric) ? q.rubric : []),
+        created_at: DateTime.utc().toSQL(),
+        updated_at: DateTime.utc().toSQL(),
+      }))
+
+      await trx.table('free_responses').insert(records)
+      await trx.commit()
+    } catch (error) {
+      await trx.rollback()
+      throw error
+    }
   }
 }

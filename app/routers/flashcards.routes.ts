@@ -1,6 +1,6 @@
 import router from '@adonisjs/core/services/router'
 
-const FlashcardController = () => import('#controllers/flashcard_controller')
+const FlashcardController = () => import('#controllers/studyTools/flashcard_controller')
 
 /**
  * Flashcard routes - handles flashcard sets, individual flashcards, and starred collections
