@@ -36,7 +36,7 @@ export default class NotesController {
       projectId: vine.string().trim().minLength(1),
       name: vine.string().trim().minLength(1).maxLength(255),
       description: vine.string().trim().optional(),
-      content: vine.string().trim().optional(),
+      content: vine.string().optional(), // Don't trim HTML content!
       folderPath: vine.array(vine.string()).optional(), // Array of folder IDs
     })
   )
@@ -59,7 +59,7 @@ export default class NotesController {
   static updateValidator = vine.compile(
     vine.object({
       name: vine.string().trim().minLength(1).maxLength(255).optional(),
-      content: vine.string().trim().optional(),
+      content: vine.string().optional(), // Don't trim HTML content!
     })
   )
 

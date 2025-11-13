@@ -119,6 +119,9 @@ export default class NoteService {
       await this.projectService.updateNoteNameInTree(userId, note.projectId, noteId, data.name)
     }
 
+    // Reload note with libraryItems to match getNoteById response structure
+    await note.load('libraryItems')
+
     return note
   }
 
